@@ -1,34 +1,31 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-export const protectRoute= async(req, res, next) =>{
+export const protectRoute = async (req, res, next) => {
     let token;
+    const authHeader = req.headers.authorization;
 
-    const authorizationHeader =req.headers.authorization;
-
-    if(authorizationHeader && authorizationHeader.startsWith('Bearer')){
-        try{
-            token= authorizationHeader.split(' ')[1];
-
-            const decodedToken =jwt.verify(token, process.env.JWT_SECRET);
-
-            req.user= await User.findById(decodedToken.id).select('-password');
-
+    if (authHeader && authHeader.startsWith('Bearer')) {
+        try {
+            token = authHeader.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            req.user = await User.findById(decoded.id).select('-password');
             next();
-        }catch(error){
-            res.status(401).json({ message: "Token failed" });
+        } catch (error) {
+            res.status(401).json({ message: "Token verification failed" });
         }
-    }else{
-        res.status(401).json({ message: "No token provided" });
+    } else {
+        res.status(401).json({ message: "No authorization token provided" });
     }
 };
 
-export const authorizeRoles= (...roles) =>{
-    return (req, res, next) =>{
-        if(!roles.includes(req.user.role)){
-            return res.status(403).json({
-                message: "Forbidden"
-            });
+export const authorizeRoles = (...allowedRoles) => {
+    return (req, res, next) => {
+        const hasRole = req.user.roles.some(role => allowedRoles.includes(role));
+        
+        if (!hasRole) {
+            return res.status(403).json({ message: "Access forbidden: insufficient permissions" });
         }
         next();
     };

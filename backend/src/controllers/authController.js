@@ -2,99 +2,159 @@ import User from '../models/User.js';
 import generateToken from '../utils/generateToken.js';
 import sendEmail from '../utils/sendEmail.js';
 
-export const registerUser =async(req, res) =>{
-    try{
-        const { email, password } =req.body;
+export const registerUser = async (req, res) => {
+    try {
+        const { email, password, confirmPassword } = req.body;
 
-        if(!email.endsWith('@iitk.ac.in')){
-            return res.status(400).json({ message: "Invalid domain" });
+        if (password !== confirmPassword) {
+            return res.status(400).json({ message: "Passwords do not match" });
         }
 
-        const userExists= await User.findOne({ email });
-
-        if(userExists){
-            return res.status(400).json({ message: "User exists" });
+        if (!email.endsWith('@iitk.ac.in')) {
+            return res.status(400).json({ message: "Invalid domain. Institute email required." });
         }
 
-        const generatedOtp= Math.floor(100000 +Math.random() * 900000).toString();
+        const userExists = await User.findOne({ email });
 
-        const user= await User.create({
+        if (userExists) {
+            return res.status(400).json({ message: "User already exists" });
+        }
+
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        const user = await User.create({
             email,
             password,
             otp: generatedOtp
         });
 
-        if(user){
-            const message= `Your OTP for P.A.T.A.N.G registration is ${generatedOtp}.`;
+        if (user) {
+            const message = `Your activation code is ${generatedOtp}.`;
             
-            try{
-                await sendEmail({
-                    email: user.email,
-                    subject: 'P.A.T.A.N.G - Verify Your Account',
-                    message: message
-                });
+            await sendEmail({
+                email: user.email,
+                subject: 'Verify your account',
+                message: message
+            });
 
-                res.status(201).json({
-                    _id: user._id,
-                    email: user.email,
-                    message: "OTP sent successfully"
-                });
-            }catch(emailError){
-                user.otp= undefined;
-                await user.save();
-                return res.status(500).json({ message: "Email could not be sent" });
-            }
-        }else{
-            res.status(400).json({ message: "Invalid data" });
+            res.status(201).json({
+                _id: user._id,
+                email: user.email,
+                message: "Activation code sent successfully"
+            });
+        } else {
+            res.status(400).json({ message: "Invalid user data" });
         }
-    }catch(error){
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-export const verifyOtp= async(req, res) =>{
-    try{
-        const { email, otp } =req.body;
-        const user =await User.findOne({ email });
+export const verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
 
-        if(user && user.otp ===otp){
-            user.isVerified= true;
-            user.otp =undefined;
+        if (user && user.otp === otp) {
+            user.isVerified = true;
+            user.otp = undefined;
             await user.save();
 
             res.status(200).json({
                 _id: user._id,
                 email: user.email,
-                role: user.role,
-                token: generateToken(user._id, user.role)
+                roles: user.roles,
+                token: generateToken(user._id, user.roles)
             });
-        }else{
-            res.status(401).json({ message: "Invalid OTP" });
+        } else {
+            res.status(401).json({ message: "Invalid activation code" });
         }
-    }catch(error){
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-export const loginUser= async(req, res) =>{
-    try{
-        const { email, password } =req.body;
-        const user =await User.findOne({ email });
+export const loginUser = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
 
-        if(user && (await user.matchPassword(password))){
-            if(!user.isVerified){
-                return res.status(401).json({ message: "Not verified" });
+        if (user && (await user.matchPassword(password))) {
+            if (!user.isVerified) {
+                return res.status(401).json({ message: "Account is not verified" });
             }
             res.json({
                 _id: user._id,
                 email: user.email,
-                role: user.role,
-                token: generateToken(user._id, user.role)
+                roles: user.roles,
+                token: generateToken(user._id, user.roles)
             });
-        }else{
-            res.status(401).json({ message: "Invalid credentials" });
+        } else {
+            res.status(401).json({ message: "Invalid email or password" });
         }
-    }catch(error){
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const resetOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        user.resetPasswordOtp = resetOtp;
+        user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
+        await user.save();
+
+        const message = `Your password reset code is ${resetOtp}. It will expire in 10 minutes.`;
+        
+        await sendEmail({
+            email: user.email,
+            subject: 'Password Reset Request',
+            message: message
+        });
+
+        res.status(200).json({ message: "Password reset code sent successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+export const resetPassword = async (req, res) => {
+    try {
+        const { email, otp, newPassword, confirmPassword } = req.body;
+
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ message: "Passwords do not match" });
+        }
+
+        const user = await User.findOne({
+            email,
+            resetPasswordOtp: otp,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: "Invalid or expired reset code" });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: "New password must contain at least 8 characters" });
+        }
+
+        user.password = newPassword;
+        user.resetPasswordOtp = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+
+        res.status(200).json({ message: "Password reset successfully" });
+    } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
