@@ -4,7 +4,7 @@ import sendEmail from '../utils/sendEmail.js';
 
 export const registerUser = async (req, res) => {
     try {
-        const { email, password, confirmPassword } = req.body;
+        const { name, email, password, confirmPassword } = req.body;
 
         if (password !== confirmPassword) {
             return res.status(400).json({ message: "Passwords do not match" });
@@ -23,6 +23,7 @@ export const registerUser = async (req, res) => {
         const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
         const user = await User.create({
+            name,
             email,
             password,
             otp: generatedOtp
