@@ -37,6 +37,18 @@ const canUserAccessFacility = (facility, userRoles) => {
     return userRoles.some((role) => facility.allowedRoles.includes(role));
 };
 
+const getBookingParticipantCount = (booking) => {
+    if (typeof booking?.participantCount === 'number' && booking.participantCount > 0) {
+        return booking.participantCount;
+    }
+
+    if (Array.isArray(booking?.participants) && booking.participants.length > 0) {
+        return booking.participants.length;
+    }
+
+    return 1;
+};
+
 export const checkAvailability = async (req, res) => {
     try {
         const { slotId, bookingDate } = req.query;
@@ -58,15 +70,15 @@ export const checkAvailability = async (req, res) => {
             return res.status(400).json({ message: 'Invalid slot date/time combination' });
         }
 
-        const [activeBookings, quotaUsage, activeBlock] = await Promise.all([
-            SportsBooking.countDocuments({
+        const [existingBookings, quotaUsage, activeBlock] = await Promise.all([
+            SportsBooking.find({
                 slot: slot._id,
                 bookingDate: {
                     $gte: new Date(new Date(bookingDate).setHours(0, 0, 0, 0)),
                     $lte: new Date(new Date(bookingDate).setHours(23, 59, 59, 999))
                 },
                 status: { $in: ACTIVE_BOOKING_STATUSES }
-            }),
+            }).select('participantCount participants'),
             SportsBooking.countDocuments({
                 user: req.user._id,
                 slotStartAt: getQuotaWindow(slotStartAt),
@@ -79,6 +91,8 @@ export const checkAvailability = async (req, res) => {
                 endTime: { $gt: slotStartAt }
             })
         ]);
+
+        const activeBookings = existingBookings.reduce((sum, booking) => sum + getBookingParticipantCount(booking), 0);
 
         res.json({
             facility: slot.facility,
@@ -99,7 +113,7 @@ export const checkAvailability = async (req, res) => {
 
 export const createBooking = async (req, res) => {
     try {
-        const { slotId, bookingDate, isGroupBooking = false, participantIds = [] } = req.body;
+        const { slotId, bookingDate, isGroupBooking = false, participantIds = [], participantCount: rawParticipantCount } = req.body;
 
         if (!slotId || !bookingDate) {
             return res.status(400).json({ message: 'slotId and bookingDate are required' });
@@ -134,7 +148,18 @@ export const createBooking = async (req, res) => {
             return res.status(400).json({ message: 'Invalid slot date/time combination' });
         }
 
-        const [quotaUsage, activeBlock, activeBookings, existingBooking] = await Promise.all([
+        const normalizedParticipantCount = Number.parseInt(rawParticipantCount, 10);
+        const participantCount = Number.isFinite(normalizedParticipantCount) ? normalizedParticipantCount : 1;
+
+        if (participantCount < 1) {
+            return res.status(400).json({ message: 'participantCount must be at least 1' });
+        }
+
+        if (participantCount > slot.capacity) {
+            return res.status(400).json({ message: 'participantCount cannot exceed the slot capacity' });
+        }
+
+        const [quotaUsage, activeBlock, existingBookings, existingBooking] = await Promise.all([
             SportsBooking.countDocuments({
                 user: req.user._id,
                 slotStartAt: getQuotaWindow(slotStartAt),
@@ -146,14 +171,14 @@ export const createBooking = async (req, res) => {
                 startTime: { $lt: slotEndAt },
                 endTime: { $gt: slotStartAt }
             }),
-            SportsBooking.countDocuments({
+            SportsBooking.find({
                 slot: slot._id,
                 bookingDate: {
                     $gte: new Date(new Date(bookingDate).setHours(0, 0, 0, 0)),
                     $lte: new Date(new Date(bookingDate).setHours(23, 59, 59, 999))
                 },
                 status: { $in: ACTIVE_BOOKING_STATUSES }
-            }),
+            }).select('participantCount participants'),
             SportsBooking.findOne({
                 user: req.user._id,
                 slot: slot._id,
@@ -173,7 +198,9 @@ export const createBooking = async (req, res) => {
             return res.status(400).json({ message: `Slot unavailable due to ${activeBlock.reason}` });
         }
 
-        if (activeBookings >= slot.capacity) {
+        const activeBookings = existingBookings.reduce((sum, booking) => sum + getBookingParticipantCount(booking), 0);
+
+        if (activeBookings + participantCount > slot.capacity) {
             return res.status(400).json({ message: 'Selected slot is already full' });
         }
 
@@ -182,7 +209,7 @@ export const createBooking = async (req, res) => {
         }
 
         const participants = [...new Set([String(req.user._id), ...participantIds.map(String)])];
-        const minPlayersRequired = isGroupBooking ? Math.max(slot.minPlayersRequired, participants.length) : 1;
+        const minPlayersRequired = isGroupBooking ? Math.max(slot.minPlayersRequired, participantCount) : participantCount;
 
         const booking = await SportsBooking.create({
             user: req.user._id,
@@ -194,6 +221,7 @@ export const createBooking = async (req, res) => {
             status: isGroupBooking ? 'group_pending' : 'confirmed',
             isGroupBooking,
             minPlayersRequired,
+            participantCount,
             participants
         });
 
@@ -218,6 +246,70 @@ export const listMyBookings = async (req, res) => {
         res.json(bookings);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+export const updateBooking = async (req, res) => {
+    try {
+        const booking = await SportsBooking.findById(req.params.id)
+            .populate('slot')
+            .populate('facility');
+
+        if (!booking) {
+            return res.status(404).json({ message: 'Booking not found' });
+        }
+
+        const isOwner = String(booking.user) === String(req.user._id);
+        const isPrivileged = req.user.roles.some((role) => ['caretaker', 'admin', 'executive'].includes(role));
+
+        if (!isOwner && !isPrivileged) {
+            return res.status(403).json({ message: 'You are not allowed to modify this booking' });
+        }
+
+        if (!ACTIVE_BOOKING_STATUSES.includes(booking.status)) {
+            return res.status(400).json({ message: 'This booking can no longer be modified' });
+        }
+
+        const normalizedParticipantCount = Number.parseInt(req.body.participantCount, 10);
+        const participantCount = Number.isFinite(normalizedParticipantCount)
+            ? normalizedParticipantCount
+            : getBookingParticipantCount(booking);
+
+        if (participantCount < 1) {
+            return res.status(400).json({ message: 'participantCount must be at least 1' });
+        }
+
+        const slotCapacity = booking.slot?.capacity || booking.facility?.capacity || 1;
+        if (participantCount > slotCapacity) {
+            return res.status(400).json({ message: 'participantCount cannot exceed the slot capacity' });
+        }
+
+        const existingBookings = await SportsBooking.find({
+            slot: booking.slot._id,
+            bookingDate: {
+                $gte: new Date(new Date(booking.bookingDate).setHours(0, 0, 0, 0)),
+                $lte: new Date(new Date(booking.bookingDate).setHours(23, 59, 59, 999))
+            },
+            status: { $in: ACTIVE_BOOKING_STATUSES },
+            _id: { $ne: booking._id }
+        }).select('participantCount participants');
+
+        const otherParticipants = existingBookings.reduce((sum, existingBooking) => sum + getBookingParticipantCount(existingBooking), 0);
+
+        if (otherParticipants + participantCount > slotCapacity) {
+            return res.status(400).json({ message: 'Not enough capacity left for that many players' });
+        }
+
+        booking.participantCount = participantCount;
+        booking.minPlayersRequired = booking.isGroupBooking
+            ? Math.max(booking.slot?.minPlayersRequired || 1, participantCount)
+            : participantCount;
+
+        await booking.save();
+
+        return res.json(booking);
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
     }
 };
 
