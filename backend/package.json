@@ -6,6 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "repair:cloud-data": "node src/scripts/repair-cloud-data.js",
+    "seed:dashboard-events": "node src/scripts/seed-dashboard-events.js",
     "seed:dev": "node src/scripts/seed-dev.js",
     "start": "node src/server.js"
   },
