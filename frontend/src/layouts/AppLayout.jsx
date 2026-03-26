@@ -18,7 +18,9 @@ import {
   Bell,
   Sun,
   Moon,
-  Users
+  Users,
+  Building,
+  CalendarPlus
 } from 'lucide-react';
 
 const navItems = [
@@ -33,6 +35,11 @@ const navItems = [
 const coordinatorItems = [
   { path: '/coordinator/events', label: 'Manage Events', icon: CalendarDays },
   { path: '/coordinator/venues', label: 'Book Venue', icon: LayoutDashboard },
+];
+
+const userCoordinatorItems = [
+  { path: '/request-room', label: 'Room Booking', icon: Building },
+  { path: '/request-event', label: 'Publish Event', icon: CalendarPlus },
 ];
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
@@ -105,6 +112,32 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
               {!collapsed && label}
             </NavLink>
           ))}
+
+          <div className="my-6 border-t border-white/10" />
+          {!collapsed && (
+            <p className="px-4 text-xs font-semibold text-brand-300 uppercase tracking-wider mb-3">
+              Coordinator
+            </p>
+          )}
+          {userCoordinatorItems.map(({ path, label, icon: Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              onClick={onClose}
+              title={collapsed ? label : undefined}
+              className={({ isActive }) =>
+                `flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-4'} py-3 rounded-xl text-sm font-medium transition-all duration-200
+                ${isActive
+                  ? 'bg-white/10 text-white shadow-sm'
+                  : 'text-brand-100 hover:bg-white/5 hover:text-white'
+                }`
+              }
+            >
+              <Icon size={18} className="text-brand-200 flex-shrink-0" />
+              {!collapsed && label}
+            </NavLink>
+          ))}
+
 
           {isCoordinator && (
             <>
@@ -208,6 +241,8 @@ const Topbar = ({ onMenuToggle }) => {
     if (path === '/settings') return 'Settings';
     if (path === '/calendar') return 'Calendar';
     if (path === '/feedback') return 'Feedback';
+    if (path === '/request-room') return 'Room Booking Request';
+    if (path === '/request-event') return 'Publish Event Request';
     if (path.startsWith('/coordinator')) return 'Coordinators';
     return 'Dashboard';
   })();
