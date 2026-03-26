@@ -284,6 +284,7 @@ const SportsBookingView = ({
                           <button
                             key={slot._id}
                             type="button"
+                            aria-label={`Select slot ${court.courtName} ${formatSlotTimeRange(slot)}`}
                             onClick={() => {
                               setSelectedSlotId(slot._id);
                               setSelectedCourtId(court.facilityId);
@@ -423,6 +424,7 @@ const SportsBookingView = ({
                     </div>
                     <button
                       type="button"
+                      aria-label={isGroupBooking ? 'Disable group booking' : 'Enable group booking'}
                       onClick={() => canCreateGroupBooking && setIsGroupBooking((current) => !current)}
                       disabled={!canCreateGroupBooking}
                       className={`relative h-7 w-12 rounded-full transition-colors ${

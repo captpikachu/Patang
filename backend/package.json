@@ -4,7 +4,9 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed:dev": "node src/scripts/seed-dev.js",
     "start": "node src/server.js"
   },
   "author": "",
@@ -24,5 +26,8 @@
     "nodemailer": "^8.0.2",
     "qrcode": "^1.5.4",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
   }
 }
