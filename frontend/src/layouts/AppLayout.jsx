@@ -280,7 +280,7 @@ const Topbar = ({ onMenuToggle }) => {
                   {displayName}
                </p>
                <p className="text-xs text-gray-500">
-                 Student
+                 {user?.roles ? user.roles.map(r => r.charAt(0).toUpperCase() + r.slice(1)).join(', ') : 'Student'}
                </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-brand-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
