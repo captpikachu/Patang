@@ -4,7 +4,7 @@ import sendEmail from '../utils/sendEmail.js';
 
 export const registerUser = async (req, res) => {
     try {
-        const { name, email, password, confirmPassword } = req.body;
+        const { name, email, password, confirmPassword, rollNumber } = req.body;
 
         if (password !== confirmPassword) {
             return res.status(400).json({ message: "Passwords do not match" });
@@ -26,7 +26,8 @@ export const registerUser = async (req, res) => {
             name,
             email,
             password,
-            otp: generatedOtp
+            otp: generatedOtp,
+            profileDetails: { rollNumber: rollNumber || '' }
         });
 
         if (user) {
