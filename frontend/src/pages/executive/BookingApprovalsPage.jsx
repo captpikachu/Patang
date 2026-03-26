@@ -34,7 +34,7 @@ const BookingApprovalsPage = () => {
         setError('');
         try {
             const { data } = await api.get('/executive/venues/pending');
-            setRequests(data.data?.requests || data.data || []);
+            setRequests(data.data?.venueRequests || []);
         } catch (err) {
             console.error('Fetch pending requests error:', err);
             setError(err.response?.data?.message || 'Failed to load pending requests');
@@ -96,8 +96,8 @@ const BookingApprovalsPage = () => {
             const lowerQuery = searchQuery.toLowerCase();
             result = result.filter((r) => {
                 const facilityName = r.facility?.name?.toLowerCase() || '';
-                const requesterName = r.requester?.name?.toLowerCase() || '';
-                const purpose = r.purpose?.toLowerCase() || '';
+                const requesterName = r.requestedBy?.name?.toLowerCase() || '';
+                const purpose = r.reason?.toLowerCase() || '';
                 return (
                     facilityName.includes(lowerQuery) ||
                     requesterName.includes(lowerQuery) ||
@@ -114,9 +114,9 @@ const BookingApprovalsPage = () => {
                 case 'newest':
                     return new Date(b.createdAt) - new Date(a.createdAt);
                 case 'date-asc':
-                    return new Date(a.date) - new Date(b.date);
+                    return new Date(a.startTime) - new Date(b.startTime);
                 case 'date-desc':
-                    return new Date(b.date) - new Date(a.date);
+                    return new Date(b.startTime) - new Date(a.startTime);
                 default:
                     return 0;
             }
@@ -220,17 +220,17 @@ const BookingApprovalsPage = () => {
                                         <div className="flex items-start gap-3 text-sm text-gray-600">
                                             <User size={16} className="text-gray-400 mt-0.5 shrink-0" />
                                             <div>
-                                                <p className="font-semibold text-gray-800">{request.requester?.name || 'Unknown User'}</p>
-                                                <p className="text-xs text-gray-400">{request.requester?.email || 'No email provided'}</p>
+                                                <p className="font-semibold text-gray-800">{request.requestedBy?.name || 'Unknown User'}</p>
+                                                <p className="text-xs text-gray-400">{request.requestedBy?.email || 'No email provided'}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-start gap-3 text-sm text-gray-600">
                                             <Calendar size={16} className="text-gray-400 mt-0.5 shrink-0" />
                                             <div>
-                                                <p className="font-semibold text-gray-800">{formatDate(request.date)}</p>
+                                                <p className="font-semibold text-gray-800">{formatDate(request.startTime)}</p>
                                                 <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                                                     <Clock size={12} />
-                                                    {request.startTime} — {request.endTime}
+                                                    {new Date(request.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — {new Date(request.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </p>
                                             </div>
                                         </div>
@@ -240,7 +240,7 @@ const BookingApprovalsPage = () => {
                                         <FileText size={16} className="text-gray-400 shrink-0" />
                                         <div>
                                             <span className="font-semibold text-gray-800 mr-2">Purpose:</span>
-                                            {request.purpose || 'No purpose specified'}
+                                            <span className="capitalize">{request.reason?.replace(/_/g, ' ') || 'No purpose specified'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -289,7 +289,7 @@ const BookingApprovalsPage = () => {
 
                         <div className="p-6 space-y-4">
                             <p className="text-sm text-gray-600">
-                                You are about to <strong className={actionType === 'approve' ? 'text-brand-600' : 'text-red-600'}>{actionType}</strong> the venue request for <strong>{selectedRequest.facility?.name}</strong> on {formatDate(selectedRequest.date)}.
+                                You are about to <strong className={actionType === 'approve' ? 'text-brand-600' : 'text-red-600'}>{actionType}</strong> the venue request for <strong>{selectedRequest.facility?.name}</strong> on {formatDate(selectedRequest.startTime)}.
                             </p>
 
                             <div>

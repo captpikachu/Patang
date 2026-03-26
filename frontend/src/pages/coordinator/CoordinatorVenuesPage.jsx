@@ -34,9 +34,11 @@ const MetricTile = ({ title, value, icon: Icon, colorClass }) => (
 
 const CoordinatorVenuesPage = () => {
   const [data, setData] = useState({ venues: [], bookableDates: [], availabilityByVenue: {}, myRequests: [], requestStats: {} });
-  const [selectedDate, setSelectedDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Default to today based on backend if empty, persist via localStorage
+  const [selectedDate, setSelectedDate] = useState(() => localStorage.getItem('patang_venue_date') || '');
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,6 +66,9 @@ const CoordinatorVenuesPage = () => {
   };
 
   useEffect(() => {
+    if (selectedDate) {
+      localStorage.setItem('patang_venue_date', selectedDate);
+    }
     fetchData(selectedDate);
     // eslint-disable-next-line
   }, [selectedDate]);
