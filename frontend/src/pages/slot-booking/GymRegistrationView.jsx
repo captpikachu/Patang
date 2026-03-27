@@ -66,7 +66,6 @@ const SubscriptionRegistrationView = ({
   const meta = facilityMeta[facilityType] || facilityMeta.Gym;
   const FacilityIcon = meta.icon;
   const [selectedPlanId, setSelectedPlanId] = useState('');
-  const [selectedSlotId, setSelectedSlotId] = useState('');
   const [medicalCert, setMedicalCert] = useState(null);
   const [paymentReceipt, setPaymentReceipt] = useState(null);
   const [validationError, setValidationError] = useState('');
@@ -80,12 +79,7 @@ const SubscriptionRegistrationView = ({
     if (!selectedPlanId && data?.plans?.length) {
       setSelectedPlanId(data.plans[0]._id || data.plans[0].planDuration || data.plans[0].name);
     }
-
-    if (!selectedSlotId && data?.slots?.length) {
-      const available = data.slots.find(s => s.spotsLeft > 0);
-      if (available) setSelectedSlotId(available._id);
-    }
-  }, [data, selectedPlanId, selectedSlotId]);
+  }, [data, selectedPlanId]);
 
   const selectedPlan = data?.plans?.find((plan) => (plan._id || plan.planDuration || plan.name) === selectedPlanId) || data?.plans?.[0] || null;
   const subscription = data?.currentSubscription || null;
@@ -117,11 +111,6 @@ const SubscriptionRegistrationView = ({
       return;
     }
 
-    if (!selectedSlotId) {
-      setValidationError('Select a time slot before submitting the registration.');
-      return;
-    }
-
     if (!medicalCert) {
       setValidationError('Upload your medical certificate before submitting.');
       return;
@@ -135,7 +124,6 @@ const SubscriptionRegistrationView = ({
     onSubmit({
       facilityType,
       plan: selectedPlan,
-      slotId: selectedSlotId,
       medicalCert,
       paymentReceipt,
     });
@@ -294,52 +282,6 @@ const SubscriptionRegistrationView = ({
                     title={meta.emptyPlansTitle}
                     description={meta.emptyPlansDescription}
                   />
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-brand-50 p-3 text-brand-600">
-                  <FacilityIcon size={18} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Select a time slot</h2>
-                  <p className="mt-1 text-sm text-gray-500">Choose your preferred monthly time slot. Capacity is strictly enforced.</p>
-                </div>
-              </div>
-
-              {data?.slots?.length ? (
-                <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {data.slots.map((slot) => {
-                    const isSelected = slot._id === selectedSlotId;
-                    const isFull = slot.spotsLeft <= 0;
-
-                    return (
-                      <button
-                        key={slot._id}
-                        type="button"
-                        disabled={isFormLocked || isFull}
-                        onClick={() => setSelectedSlotId(slot._id)}
-                        className={`rounded-2xl border p-4 text-left transition-all ${
-                          isSelected
-                            ? 'border-brand-500 bg-brand-50 ring-2 ring-brand-200'
-                            : isFull 
-                            ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                            : 'border-gray-200 bg-gray-50 hover:border-brand-200 hover:bg-brand-50/70'
-                        } ${isFormLocked && !isFull ? 'cursor-not-allowed opacity-70' : ''}`}
-                      >
-                         <p className="text-sm font-bold text-gray-800">{slot.startTime} - {slot.endTime}</p>
-                         <p className={`mt-1 text-xs font-semibold ${isFull ? 'text-red-500' : 'text-brand-600'}`}>
-                           {isFull ? 'Slot Full' : `${slot.spotsLeft} spots left`}
-                         </p>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="mt-5">
-                   <EmptyState title="No slots available" description="There are no configured time slots for this facility." />
                 </div>
               )}
             </section>

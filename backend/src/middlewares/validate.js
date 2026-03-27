@@ -24,10 +24,6 @@ export const validateSubscriptionApply = (req, res, next) => {
         return errorResponse(res, 400, 'VALIDATION_ERROR', 'Roll number is required. Please update your profile before applying.');
     }
 
-    if (!req.body.slotId) {
-        return errorResponse(res, 400, 'VALIDATION_ERROR', 'slotId is required.');
-    }
-
     if (!facilityType || !['Gym', 'SwimmingPool'].includes(facilityType)) {
         return errorResponse(res, 400, 'VALIDATION_ERROR', 'facilityType must be Gym or SwimmingPool');
     }

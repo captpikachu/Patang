@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockRes } from '../test/helpers.js';
 
 const {
+  facilityFindOneMock,
+  sportsSlotFindMock,
   subscriptionFindOneMock,
   subscriptionCreateMock,
   subscriptionFindMock,
@@ -19,6 +21,8 @@ const {
   normalizeSubscriptionTypeMock,
   parseSubscriptionScanPayloadMock,
 } = vi.hoisted(() => ({
+  facilityFindOneMock: vi.fn(),
+  sportsSlotFindMock: vi.fn(),
   subscriptionFindOneMock: vi.fn(),
   subscriptionCreateMock: vi.fn(),
   subscriptionFindMock: vi.fn(),
@@ -44,6 +48,18 @@ vi.mock('../models/SubscriptionV2.js', () => ({
     find: subscriptionFindMock,
     countDocuments: subscriptionCountDocumentsMock,
     findById: subscriptionFindByIdMock,
+  },
+}));
+
+vi.mock('../models/SportsSlot.js', () => ({
+  default: {
+    find: sportsSlotFindMock,
+  },
+}));
+
+vi.mock('../models/Facility.js', () => ({
+  default: {
+    findOne: facilityFindOneMock,
   },
 }));
 
@@ -77,7 +93,8 @@ import {
 
 describe('subscriptionControllerV2', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    normalizeSubscriptionTypeMock.mockImplementation((value) => value);
   });
 
   it('creates a new subscription application when no active one exists', async () => {
@@ -91,7 +108,6 @@ describe('subscriptionControllerV2', () => {
       plan: 'Monthly',
       status: 'Pending',
     });
-
     const req = {
       body: { facilityType: 'Gym', plan: 'Monthly' },
       files: {
@@ -104,7 +120,7 @@ describe('subscriptionControllerV2', () => {
 
     await apply(req, res);
 
-    expect(subscriptionCreateMock).toHaveBeenCalledWith({
+    expect(subscriptionCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       facilityType: 'Gym',
       plan: 'Monthly',
@@ -113,7 +129,7 @@ describe('subscriptionControllerV2', () => {
       medicalCertFileId: 'medical-file-id',
       paymentReceiptUrl: expect.stringMatching(/^\/api\/v2\/subscriptions\/.+\/documents\/paymentReceipt$/),
       paymentReceiptFileId: 'receipt-file-id',
-    });
+    }));
     expect(res.statusCode).toBe(201);
     expect(res.body.success).toBe(true);
   });
@@ -171,8 +187,7 @@ describe('subscriptionControllerV2', () => {
 
   it('verifies entry by alternating from the latest access action when none is supplied', async () => {
     parseSubscriptionScanPayloadMock.mockReturnValueOnce({ passId: 'GYM-2026-001' });
-    subscriptionFindOneMock.mockReturnValueOnce({
-      populate: vi.fn().mockResolvedValue({
+    const populatedSubscription = {
         _id: 'sub-1',
         userId: { _id: 'user-1', name: 'Aarya', email: 'aarya@iitk.ac.in' },
         facilityType: 'Gym',
@@ -180,9 +195,17 @@ describe('subscriptionControllerV2', () => {
         status: 'Approved',
         startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
         endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+    subscriptionFindOneMock.mockReturnValueOnce({ populate: vi.fn().mockResolvedValue(populatedSubscription) });
+    getScopedSubscriptionTypesMock.mockReturnValueOnce(['Gym']);
+    facilityFindOneMock.mockReturnValueOnce({
+      select: vi.fn().mockResolvedValue({ _id: 'facility-1' }),
+    });
+    sportsSlotFindMock.mockReturnValueOnce({
+      select: vi.fn().mockReturnValue({
+        lean: vi.fn().mockResolvedValue([{ startTime: '00:00', endTime: '23:59' }]),
       }),
     });
-    getScopedSubscriptionTypesMock.mockReturnValueOnce(['Gym']);
     getLatestAccessActionMock.mockResolvedValueOnce({ action: 'entry' });
     createAccessLogMock.mockResolvedValueOnce({ scannedAt: new Date('2026-03-26T10:00:00.000Z') });
     getFacilityOccupancySummaryMock.mockResolvedValueOnce({ facilityType: 'Gym', totalSlots: 100, occupiedSlots: 40, availableSlots: 60 });
@@ -204,6 +227,41 @@ describe('subscriptionControllerV2', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.body.data.action).toBe('exit');
+  });
+
+  it('blocks entry verification outside the assigned slot window', async () => {
+    parseSubscriptionScanPayloadMock.mockReturnValueOnce({ passId: 'GYM-2026-002' });
+    const populatedSubscription = {
+        _id: 'sub-2',
+        userId: { _id: 'user-2', name: 'Aarya', email: 'aarya@iitk.ac.in' },
+        facilityType: 'Gym',
+        passId: 'GYM-2026-002',
+        status: 'Approved',
+        startDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        endDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      };
+    subscriptionFindOneMock.mockReturnValueOnce({ populate: vi.fn().mockResolvedValue(populatedSubscription) });
+    getScopedSubscriptionTypesMock.mockReturnValueOnce(['Gym']);
+    facilityFindOneMock.mockReturnValueOnce({
+      select: vi.fn().mockResolvedValue({ _id: 'facility-1' }),
+    });
+    sportsSlotFindMock.mockReturnValueOnce({
+      select: vi.fn().mockReturnValue({
+        lean: vi.fn().mockResolvedValue([{ startTime: '23:58', endTime: '23:59' }]),
+      }),
+    });
+
+    const req = {
+      body: { passId: 'GYM-2026-002' },
+      user: { _id: 'gym-admin-1', roles: ['gym_admin'] },
+    };
+    const res = createMockRes();
+
+    await verifyEntry(req, res);
+
+    expect(createAccessLogMock).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error.code).toBe('OUTSIDE_SLOT_WINDOW');
   });
 
   it('returns occupancy data for allowed facility scopes', async () => {

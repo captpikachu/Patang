@@ -192,7 +192,7 @@ const GymAdminDashboardPage = () => {
     );
   }
 
-  const gymOccupancy = data.occupancy?.find(o => o.facilityType?.toLowerCase() === 'gym') || { currentOccupancy: 0, totalCapacity: 0 };
+  const gymOccupancy = data.occupancy?.find(o => o.facilityType?.toLowerCase() === 'gym') || { occupiedSlots: 0, totalSlots: 0 };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -214,7 +214,7 @@ const GymAdminDashboardPage = () => {
             />
             <MetricTile
               title="Live Occupancy"
-              value={`${gymOccupancy.currentOccupancy} / ${gymOccupancy.totalCapacity || '--'}`}
+              value={`${gymOccupancy.occupiedSlots ?? 0} / ${gymOccupancy.totalSlots ?? '--'}`}
               icon={Users}
               colorClass="text-brand-600"
               linkTo="/gym-admin/scanner"

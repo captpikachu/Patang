@@ -181,7 +181,7 @@ const SwimAdminDashboardPage = () => {
     );
   }
 
-  const swimOccupancy = data.occupancy?.find(o => o.facilityType?.toLowerCase() === 'swimming') || { currentOccupancy: 0, totalCapacity: 0 };
+  const swimOccupancy = data.occupancy?.find(o => o.facilityType?.toLowerCase() === 'swimmingpool') || { occupiedSlots: 0, totalSlots: 0 };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -200,7 +200,7 @@ const SwimAdminDashboardPage = () => {
             />
             <MetricTile
               title="Live Occupancy"
-              value={`${swimOccupancy.currentOccupancy} / ${swimOccupancy.totalCapacity || '--'}`}
+              value={`${swimOccupancy.occupiedSlots ?? 0} / ${swimOccupancy.totalSlots ?? '--'}`}
               icon={Activity}
               colorClass="text-blue-600"
               linkTo="/swim-admin/scanner"

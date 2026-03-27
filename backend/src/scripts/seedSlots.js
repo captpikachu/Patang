@@ -2,8 +2,8 @@
  * seedSlots.js — Idempotent slot seeder for Gym and Swimming facilities.
  *
  * Creates 10 hourly slots per facility:
- *   Morning: 06:00–07:00, 07:00–08:00, 08:00–09:00, 09:00–10:00, 10:00–11:00
- *   Evening: 15:00–16:00, 16:00–17:00, 17:00–18:00, 18:00–19:00, 19:00–20:00
+ *   Morning: 06:00–07:00, 07:00–08:00, 08:00–09:00, 09:00–10:00
+ *   Evening: 15:00–16:00, 16:00–17:00, 17:00–18:00, 18:00–19:00, 19:00–20:00, 20:00–21:00
  *
  * Run:  node src/scripts/seedSlots.js
  */
@@ -21,13 +21,13 @@ const SLOT_TIMES = [
     { startTime: '07:00', endTime: '08:00' },
     { startTime: '08:00', endTime: '09:00' },
     { startTime: '09:00', endTime: '10:00' },
-    { startTime: '10:00', endTime: '11:00' },
     // Evening block
     { startTime: '15:00', endTime: '16:00' },
     { startTime: '16:00', endTime: '17:00' },
     { startTime: '17:00', endTime: '18:00' },
     { startTime: '18:00', endTime: '19:00' },
     { startTime: '19:00', endTime: '20:00' },
+    { startTime: '20:00', endTime: '21:00' },
 ];
 
 const DEFAULT_CAPACITY = 30;

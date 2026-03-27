@@ -214,4 +214,36 @@ describe('DashboardPage', () => {
 
     promptMock.mockRestore();
   });
+
+  it('opens an enlarged QR preview for an approved subscription', async () => {
+    const user = userEvent.setup();
+
+    getMock.mockResolvedValueOnce({
+      data: {
+        data: {
+          subscriptions: [
+            {
+              _id: 'sub-gym',
+              facilityType: 'Gym',
+              plan: 'Monthly Gym Plan',
+              status: 'Approved',
+              qrCode: 'data:image/png;base64,abc123',
+              passId: 'GYM-2026-004',
+            },
+          ],
+          upcomingBookings: [],
+          fairUse: { score: 'High', message: 'Good standing' },
+          penalties: { totalActiveCount: 0, activePenalties: [] },
+          upcomingEvents: [],
+        },
+      },
+    });
+
+    render(<DashboardPage />);
+
+    await user.click(await screen.findByRole('button', { name: /open enlarged qr code/i }));
+
+    expect(await screen.findByRole('dialog', { name: /entry qr preview/i })).toBeInTheDocument();
+    expect(screen.getByText(/gym-2026-004/i)).toBeInTheDocument();
+  });
 });

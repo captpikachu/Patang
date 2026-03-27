@@ -81,6 +81,7 @@ const DashboardPage = () => {
   const [bookingCancellationId, setBookingCancellationId] = useState('');
   const [bookingUpdateId, setBookingUpdateId] = useState('');
   const [bookingFeedback, setBookingFeedback] = useState({ tone: '', message: '' });
+  const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
 
   const fetchDashboard = async ({ preserveLoading = false } = {}) => {
     if (!preserveLoading) {
@@ -189,7 +190,13 @@ const DashboardPage = () => {
     }
   };
 
+  const openQrPreview = () => {
+    if (!approvedSubscription?.qrCode) return;
+    setQrPreviewOpen(true);
+  };
+
   return (
+    <>
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* ═══════════════════════════════════════════════
           LEFT COLUMN (2/3)
@@ -259,7 +266,11 @@ const DashboardPage = () => {
 
                       {isApproved ? (
                         <div className="mt-4 flex items-center gap-4">
-                          <button className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm">
+                          <button
+                            type="button"
+                            onClick={openQrPreview}
+                            className="flex items-center gap-2 bg-brand-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
+                          >
                             <QrCode size={16} />
                             View Entry QR
                           </button>
@@ -368,13 +379,21 @@ const DashboardPage = () => {
         {/* ── Digital Entry Pass ────────────────────────── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center">
           <h3 className="text-sm font-bold text-gray-800 mb-4">Digital Entry Pass</h3>
-          <div className="w-32 h-32 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center mb-3">
+          <button
+            type="button"
+            onClick={openQrPreview}
+            disabled={!approvedSubscription?.qrCode}
+            className="mx-auto mb-3 block rounded-xl disabled:cursor-not-allowed"
+            aria-label={approvedSubscription?.qrCode ? 'Open enlarged QR code' : 'No active QR code available'}
+          >
+          <div className="w-32 h-32 mx-auto bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
             {approvedSubscription?.qrCode ? (
               <img src={approvedSubscription.qrCode} alt="QR Code" className="w-28 h-28 object-contain" />
             ) : (
               <QrCode size={48} className="text-gray-300" />
             )}
           </div>
+          </button>
           <p className="text-xs text-gray-400">
             {approvedSubscription ? 'Click to expand for scanning' : (subscriptions.length > 0 ? 'QR becomes available after approval' : 'No active pass yet')}
           </p>
@@ -454,6 +473,42 @@ const DashboardPage = () => {
         )}
       </div>
     </div>
+    {qrPreviewOpen && approvedSubscription?.qrCode ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/75 px-4" role="dialog" aria-modal="true" aria-label="Entry QR preview">
+        <button
+          type="button"
+          className="absolute inset-0 cursor-default"
+          aria-label="Close QR preview backdrop"
+          onClick={() => setQrPreviewOpen(false)}
+        />
+        <div className="relative z-10 w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-800">Digital Entry Pass</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Present this QR at the facility entrance for scanning.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setQrPreviewOpen(false)}
+              className="rounded-full bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+              aria-label="Close QR preview"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="mt-6 rounded-3xl border border-gray-100 bg-gray-50 p-4">
+            <img src={approvedSubscription.qrCode} alt="Enlarged QR Code" className="mx-auto h-auto w-full max-w-xs object-contain" />
+          </div>
+          <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-left">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Pass ID</p>
+            <p className="mt-1 text-sm font-semibold text-gray-800">{approvedSubscription.passId || 'Will be assigned shortly'}</p>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 };
 

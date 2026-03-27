@@ -177,7 +177,7 @@ const GymAdminScannerPage = () => {
                       <div>
                         <p className="text-xs text-brand-600 font-semibold uppercase">Current Occupancy</p>
                         <p className="text-sm font-bold text-brand-800">
-                          {scanResult.data.occupancy.currentOccupancy} / {scanResult.data.occupancy.totalCapacity || '--'}
+                          {scanResult.data.occupancy.occupiedSlots ?? 0} / {scanResult.data.occupancy.totalSlots ?? '--'}
                         </p>
                       </div>
                     </div>

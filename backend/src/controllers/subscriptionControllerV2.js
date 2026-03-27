@@ -3,6 +3,8 @@ import SubscriptionV2 from '../models/SubscriptionV2.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import { generatePassId, calculateEndDate, generateQRCode } from '../services/subscriptionService.js';
 import { storeSubscriptionDocument, streamSubscriptionDocument } from '../services/fileStorageService.js';
+import Facility from '../models/Facility.js';
+import SportsSlot from '../models/SportsSlot.js';
 import {
     createAccessLog,
     getFacilityOccupancySummary,
@@ -12,55 +14,61 @@ import {
     parseSubscriptionScanPayload
 } from '../services/accessService.js';
 
+const getIstMinutes = (date = new Date()) => {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+    return (hour * 60) + minute;
+};
+
+const parseSlotMinutes = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    const [hour, minute] = value.split(':').map(Number);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+    return (hour * 60) + minute;
+};
+
+const isWithinFacilitySlotWindow = async (facilityType, date = new Date()) => {
+    const normalizedFacilityType = facilityType === 'Gym' ? 'gym' : facilityType === 'SwimmingPool' ? 'swimming' : facilityType;
+    const facility = await Facility.findOne({ facilityType: normalizedFacilityType, isOperational: true }).select('_id');
+    if (!facility) return false;
+
+    const slots = await SportsSlot.find({ facility: facility._id, isActive: true }).select('startTime endTime').lean();
+    if (!slots.length) return false;
+
+    const nowMinutes = getIstMinutes(date);
+    return slots.some((slot) => {
+        const startMinutes = parseSlotMinutes(slot.startTime);
+        const endMinutes = parseSlotMinutes(slot.endTime);
+        return startMinutes !== null && endMinutes !== null && nowMinutes >= startMinutes && nowMinutes < endMinutes;
+    });
+};
+
 /**
  * POST /api/v2/subscriptions/apply
  * Submit a new subscription application (multipart/form-data).
  */
 export const apply = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
     try {
-        const { facilityType, plan, slotId } = req.body;
+        const { facilityType, plan } = req.body;
         const userId = req.user._id;
 
-        // Check for existing active subscription
         const existing = await SubscriptionV2.findOne({
             userId,
             facilityType,
             status: { $in: ['Pending', 'Approved'] }
-        }).session(session);
+        });
 
         if (existing) {
-            await session.abortTransaction();
-            session.endSession();
             return errorResponse(res, 409, 'ACTIVE_SUBSCRIPTION_EXISTS', 'You already have an active or pending subscription for this facility');
         }
 
-        // Import SportsSlot (inline to avoid circular dependencies if any)
-        const SportsSlot = (await import('../models/SportsSlot.js')).default;
-
-        // 1. Get the slot
-        const slot = await SportsSlot.findById(slotId).session(session);
-        if (!slot) {
-            await session.abortTransaction();
-            session.endSession();
-            return errorResponse(res, 404, 'NOT_FOUND', 'Selected slot not found');
-        }
-
-        // 2. Count active and pending subscriptions in this specific slot
-        const activeInSlot = await SubscriptionV2.countDocuments({
-            slotId,
-            status: { $in: ['Pending', 'Approved'] }
-        }).session(session);
-
-        // 3. Atomicity check — reject if slot is at capacity
-        if (activeInSlot >= (slot.capacity || 1)) {
-            await session.abortTransaction();
-            session.endSession();
-            return errorResponse(res, 400, 'SLOT_FULL', 'This time slot is full. No more subscriptions allowed.');
-        }
-
-        // 4. Upload documents to storage service
         const medicalCertUpload = await storeSubscriptionDocument({
             buffer: req.files.medicalCert[0].buffer,
             filename: req.files.medicalCert[0].originalname,
@@ -80,21 +88,16 @@ export const apply = async (req, res) => {
 
         const subscriptionId = new mongoose.Types.ObjectId();
 
-        // 5. Create subscription within the transaction
-        const [subscription] = await SubscriptionV2.create([{
+        const subscription = await SubscriptionV2.create({
             _id: subscriptionId,
             userId,
             facilityType,
             plan,
-            slotId,
             medicalCertUrl: `/api/v2/subscriptions/${subscriptionId}/documents/medicalCert`,
             medicalCertFileId: medicalCertUpload.fileId,
             paymentReceiptUrl: `/api/v2/subscriptions/${subscriptionId}/documents/paymentReceipt`,
             paymentReceiptFileId: paymentReceiptUpload.fileId
-        }], { session });
-
-        await session.commitTransaction();
-        session.endSession();
+        });
 
         return successResponse(res, 201, {
             _id: subscription._id,
@@ -103,8 +106,6 @@ export const apply = async (req, res) => {
             status: subscription.status
         }, 'Subscription application submitted');
     } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
         return errorResponse(res, 500, 'SERVER_ERROR', error.message);
     }
 };
@@ -323,6 +324,16 @@ export const verifyEntry = async (req, res) => {
             return errorResponse(res, 400, 'SUBSCRIPTION_EXPIRED', 'Subscription has expired');
         }
 
+        const withinFacilityWindow = await isWithinFacilitySlotWindow(subscription.facilityType);
+        if (!withinFacilityWindow) {
+            return errorResponse(
+                res,
+                400,
+                'OUTSIDE_SLOT_WINDOW',
+                `Pass can only be scanned during active ${subscription.facilityType} slot hours`
+            );
+        }
+
         const requestedAction = req.body.action;
         let action = requestedAction;
 
@@ -430,4 +441,3 @@ export const getSlotOccupancy = async (req, res) => {
         return errorResponse(res, 500, 'SERVER_ERROR', error.message);
     }
 };
-
