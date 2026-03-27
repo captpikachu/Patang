@@ -3,6 +3,7 @@ import {
     checkAvailability,
     createBooking,
     listMyBookings,
+    updateBooking,
     cancelBooking,
     markAttendance
 } from '../controllers/bookingController.js';
@@ -13,6 +14,7 @@ const router = express.Router();
 router.get('/check-availability', protectRoute, checkAvailability);
 router.get('/me', protectRoute, listMyBookings);
 router.post('/', protectRoute, authorizeRoles('student', 'faculty', 'admin', 'executive'), createBooking);
+router.patch('/:id', protectRoute, authorizeRoles('student', 'faculty', 'admin', 'executive'), updateBooking);
 router.post('/:id/cancel', protectRoute, cancelBooking);
 router.post('/:id/attendance', protectRoute, authorizeRoles('caretaker', 'admin', 'executive'), markAttendance);
 

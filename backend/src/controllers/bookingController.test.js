@@ -1,0 +1,169 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createChain, createMockRes } from '../test/helpers.js';
+
+const {
+  sportsBookingFindByIdMock,
+  sportsBookingFindMock,
+  sportsBookingCountDocumentsMock,
+  sportsSlotFindByIdMock,
+  facilityBlockFindOneMock,
+} = vi.hoisted(() => ({
+  sportsBookingFindByIdMock: vi.fn(),
+  sportsBookingFindMock: vi.fn(),
+  sportsBookingCountDocumentsMock: vi.fn(),
+  sportsSlotFindByIdMock: vi.fn(),
+  facilityBlockFindOneMock: vi.fn(),
+}));
+
+vi.mock('../models/Facility.js', () => ({
+  default: {},
+}));
+
+vi.mock('../models/SportsSlot.js', () => ({
+  default: {
+    findById: sportsSlotFindByIdMock,
+  },
+}));
+
+vi.mock('../models/FacilityBlock.js', () => ({
+  default: {
+    findOne: facilityBlockFindOneMock,
+  },
+}));
+
+vi.mock('../models/SportsBooking.js', () => ({
+  default: {
+    findById: sportsBookingFindByIdMock,
+    find: sportsBookingFindMock,
+    countDocuments: sportsBookingCountDocumentsMock,
+  },
+}));
+
+import { checkAvailability, updateBooking } from './bookingController.js';
+
+describe('bookingController', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('updates participant count for an active booking', async () => {
+    const saveMock = vi.fn();
+    sportsBookingFindByIdMock.mockReturnValueOnce(createChain({
+      _id: 'booking-1',
+      user: 'user-1',
+      status: 'confirmed',
+      isGroupBooking: false,
+      bookingDate: new Date('2026-03-27T00:00:00.000Z'),
+      participantCount: 1,
+      slot: { _id: 'slot-1', capacity: 4, minPlayersRequired: 2 },
+      facility: { capacity: 4 },
+      save: saveMock,
+    }));
+    sportsBookingFindMock.mockReturnValueOnce(createChain([]));
+
+    const req = {
+      params: { id: 'booking-1' },
+      body: { participantCount: 3 },
+      user: { _id: 'user-1', roles: ['student'] },
+    };
+    const res = createMockRes();
+
+    await updateBooking(req, res);
+
+    expect(saveMock).toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+    expect(res.body.participantCount).toBe(3);
+    expect(res.body.minPlayersRequired).toBe(3);
+  });
+
+  it('rejects updates that exceed remaining slot capacity', async () => {
+    sportsBookingFindByIdMock.mockReturnValueOnce(createChain({
+      _id: 'booking-1',
+      user: 'user-1',
+      status: 'confirmed',
+      isGroupBooking: false,
+      bookingDate: new Date('2026-03-27T00:00:00.000Z'),
+      participantCount: 1,
+      slot: { _id: 'slot-1', capacity: 4, minPlayersRequired: 2 },
+      facility: { capacity: 4 },
+      save: vi.fn(),
+    }));
+    sportsBookingFindMock.mockReturnValueOnce(createChain([
+      { participantCount: 3, participants: ['user-2', 'user-3', 'user-4'] },
+    ]));
+
+    const req = {
+      params: { id: 'booking-1' },
+      body: { participantCount: 2 },
+      user: { _id: 'user-1', roles: ['student'] },
+    };
+    const res = createMockRes();
+
+    await updateBooking(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.message).toBe('Not enough capacity left for that many players');
+  });
+
+  it('returns participant-aware remaining capacity for slot availability checks', async () => {
+    sportsSlotFindByIdMock.mockReturnValueOnce(createChain({
+      _id: 'slot-1',
+      isActive: true,
+      startTime: '07:00',
+      endTime: '08:00',
+      capacity: 6,
+      facility: {
+        _id: 'facility-1',
+        name: 'Badminton Court 2',
+      },
+    }));
+    sportsBookingFindMock.mockReturnValueOnce(createChain([
+      { participantCount: 4 },
+      { participants: ['user-2'] },
+    ]));
+    sportsBookingCountDocumentsMock.mockResolvedValueOnce(1);
+    facilityBlockFindOneMock.mockResolvedValueOnce(null);
+
+    const req = {
+      query: { slotId: 'slot-1', bookingDate: '2026-03-27' },
+      user: { _id: 'user-1' },
+    };
+    const res = createMockRes();
+
+    await checkAvailability(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.activeBookings).toBe(5);
+    expect(res.body.remainingCapacity).toBe(1);
+    expect(res.body.userQuotaUsage).toBe(1);
+  });
+
+  it('marks slot availability as blocked when a facility block overlaps', async () => {
+    sportsSlotFindByIdMock.mockReturnValueOnce(createChain({
+      _id: 'slot-1',
+      isActive: true,
+      startTime: '07:00',
+      endTime: '08:00',
+      capacity: 4,
+      facility: {
+        _id: 'facility-1',
+        name: 'Badminton Court 2',
+      },
+    }));
+    sportsBookingFindMock.mockReturnValueOnce(createChain([]));
+    sportsBookingCountDocumentsMock.mockResolvedValueOnce(0);
+    facilityBlockFindOneMock.mockResolvedValueOnce({ reason: 'Maintenance' });
+
+    const req = {
+      query: { slotId: 'slot-1', bookingDate: '2026-03-27' },
+      user: { _id: 'user-1' },
+    };
+    const res = createMockRes();
+
+    await checkAvailability(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.isBlocked).toBe(true);
+    expect(res.body.blockReason).toBe('Maintenance');
+  });
+});
