@@ -22,6 +22,7 @@ import SettingsPage from './pages/SettingsPage';
 // Coordinator pages
 import CoordinatorEventsPage from './pages/coordinator/CoordinatorEventsPage';
 import CoordinatorVenuesPage from './pages/coordinator/CoordinatorVenuesPage';
+import SportsCaretakerPage from './pages/caretaker/SportsCaretakerPage';
 
 // Executive pages
 import ExecutiveDashboardPage from './pages/executive/ExecutiveDashboardPage';
@@ -35,6 +36,27 @@ import UserManagementPage from './pages/executive/UserManagementPage';
 import FacilityManagementPage from './pages/executive/FacilityManagementPage';
 import PenaltyManagementPage from './pages/executive/PenaltyManagementPage';
 import ExecutiveSettingsPage from './pages/executive/ExecutiveSettingsPage';
+import { useAuth } from './context/AuthContext';
+
+const getDefaultRoute = (user) => {
+  const roles = user?.roles || [];
+
+  if (roles.includes('executive') || roles.includes('admin')) return '/executive/dashboard';
+  if (roles.includes('captain')) return '/captain/dashboard';
+  if (roles.includes('coordinator')) return '/coordinator/events';
+  if (roles.includes('caretaker')) return '/caretaker/sports';
+  return '/dashboard';
+};
+
+const HomeRedirect = () => {
+  const { isAuthenticated, user } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={getDefaultRoute(user)} replace />;
+};
 
 function App() {
   return (
@@ -56,7 +78,7 @@ function App() {
           </Route>
 
           {/* Protected Routes — any authenticated user */}
-          <Route element={<ProtectedRoute />}>
+          <Route element={<ProtectedRoute allowedRoles={['student', 'faculty', 'coordinator', 'captain', 'executive', 'admin', 'gym_admin', 'swim_admin']} />}>
             <Route
               path="/dashboard"
               element={<AppLayout><DashboardPage /></AppLayout>}
@@ -92,6 +114,14 @@ function App() {
             <Route
               path="/coordinator/venues"
               element={<AppLayout><CoordinatorVenuesPage /></AppLayout>}
+            />
+          </Route>
+
+          {/* Caretaker Routes — caretaker, executive, admin only */}
+          <Route element={<ProtectedRoute allowedRoles={['caretaker', 'executive', 'admin']} />}>
+            <Route
+              path="/caretaker/sports"
+              element={<AppLayout><SportsCaretakerPage /></AppLayout>}
             />
           </Route>
 
@@ -144,8 +174,8 @@ function App() {
           </Route>
 
           {/* Root redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="*" element={<HomeRedirect />} />
         </Routes>
       </BrowserRouter>
       </ToastProvider>
