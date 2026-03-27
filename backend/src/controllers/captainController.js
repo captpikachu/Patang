@@ -3,6 +3,33 @@ import TeamPracticeBlock from '../models/TeamPracticeBlock.js';
 import SportsBooking from '../models/SportsBooking.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
+const normalizeSport = (value) => String(value || '').trim().toLowerCase();
+
+const canCaptainSelfApprove = (captainSport, facilitySport) => (
+    normalizeSport(captainSport) &&
+    normalizeSport(captainSport) === normalizeSport(facilitySport)
+);
+
+const resolveOperationalFacility = async (facilityId) => {
+    const facility = await Facility.findById(facilityId).lean();
+    if (!facility) {
+        return null;
+    }
+
+    if (facility.facilityType === 'sports' && facility.isOperational !== false) {
+        return facility;
+    }
+
+    const canonicalFacility = await Facility.findOne({
+        facilityType: 'sports',
+        isOperational: true,
+        sportType: facility.sportType,
+        name: facility.name
+    }).lean();
+
+    return canonicalFacility || facility;
+};
+
 // ═════════════════════════════════════════════════════════════════════════════
 // 1. CREATE TEAM PRACTICE BLOCK
 // ═════════════════════════════════════════════════════════════════════════════
@@ -11,7 +38,7 @@ import { successResponse, errorResponse } from '../utils/apiResponse.js';
  * POST /api/captain/practice-blocks
  *
  * Captain requests a practice block for a specific future date.
- * Goes to executive for approval.
+ * Same-sport facilities are approved immediately; other facilities go to executive.
  *
  * Body: { facilityId, practiceDate, startTime, endTime, notes }
  */
@@ -69,7 +96,7 @@ export const createTeamPracticeBlock = async (req, res) => {
         }
 
         // Verify facility exists and matches captain's sport
-        const facility = await Facility.findById(facilityId).lean();
+        const facility = await resolveOperationalFacility(facilityId);
         if (!facility) {
             return errorResponse(res, 404, 'FACILITY_NOT_FOUND', 'Facility not found');
         }
@@ -84,7 +111,7 @@ export const createTeamPracticeBlock = async (req, res) => {
         // Check if captain already has an active/pending block for this facility
         const existingBlock = await TeamPracticeBlock.findOne({
             captain: req.user._id,
-            facility: facilityId,
+            facility: facility._id,
             practiceDate: startOfRequestedDay,
             status: { $in: ['pending', 'approved'] }
         }).lean();
@@ -98,15 +125,17 @@ export const createTeamPracticeBlock = async (req, res) => {
 
         const daysOfWeek = [startOfRequestedDay.getDay()];
 
+        const selfApproved = canCaptainSelfApprove(req.user.captainOf, facility.sportType);
+
         const block = await TeamPracticeBlock.create({
             captain: req.user._id,
-            facility: facilityId,
+            facility: facility._id,
             sport: req.user.captainOf || facility.sportType || 'General',
             practiceDate: startOfRequestedDay,
             startTime,
             endTime,
             daysOfWeek,
-            status: 'pending',
+            status: selfApproved ? 'approved' : 'pending',
             notes: notes?.trim() || null
         });
 
@@ -119,8 +148,12 @@ export const createTeamPracticeBlock = async (req, res) => {
             endTime: block.endTime,
             daysOfWeek: block.daysOfWeek,
             status: block.status,
-            message: 'Practice block request submitted for executive approval.'
-        }, 'Practice block request submitted for executive approval');
+            message: selfApproved
+                ? 'Practice block approved and reserved immediately.'
+                : 'Practice block request submitted for executive approval.'
+        }, selfApproved
+            ? 'Practice block approved and reserved immediately'
+            : 'Practice block request submitted for executive approval');
     } catch (error) {
         console.error('[Captain/CreateBlock] Error:', error);
         return errorResponse(res, 500, 'SERVER_ERROR', error.message);
@@ -251,8 +284,13 @@ export const editTeamPracticeBlock = async (req, res) => {
             block.notes = notes?.trim() || null;
         }
 
-        // Reset status to pending for executive re-approval
-        block.status = 'pending';
+        const facility = await resolveOperationalFacility(block.facility);
+        if (facility?._id && String(block.facility) !== String(facility._id)) {
+            block.facility = facility._id;
+        }
+        const selfApproved = canCaptainSelfApprove(req.user.captainOf, facility?.sportType);
+
+        block.status = selfApproved ? 'approved' : 'pending';
         block.reviewedBy = null;
         block.reviewedAt = null;
         block.rejectionReason = null;
@@ -266,7 +304,9 @@ export const editTeamPracticeBlock = async (req, res) => {
             endTime: block.endTime,
             status: block.status,
             notes: block.notes
-        }, 'Practice block updated. Sent for executive re-approval.');
+        }, selfApproved
+            ? 'Practice block updated and remains reserved immediately.'
+            : 'Practice block updated. Sent for executive re-approval.');
     } catch (error) {
         console.error('[Captain/EditBlock] Error:', error);
         return errorResponse(res, 500, 'SERVER_ERROR', error.message);
