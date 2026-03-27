@@ -35,8 +35,10 @@ const SwimAdminRequestsPage = () => {
     setError('');
     try {
       const { data } = await api.get(`/v2/admin/subscriptions?status=${statusFilter}&limit=100`);
-      // Filter strictly for swimming
-      const swimReqs = (data.data?.subscriptions || []).filter(r => r.facilityType?.toLowerCase() === 'swimming');
+      // Backend stores swimming subscriptions as "SwimmingPool".
+      const swimReqs = (data.data?.subscriptions || []).filter(
+        (r) => r.facilityType?.toLowerCase().includes('swimming')
+      );
       setRequests(swimReqs);
     } catch (err) {
       console.error('Fetch requests error:', err);
