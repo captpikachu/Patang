@@ -173,12 +173,16 @@ const SettingsPage = () => {
                 <Field label="Email Address" icon={Mail} value={profile?.email} disabled placeholder="Email" />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Roll Number" icon={Hash} value={profile?.profileDetails?.rollNumber} disabled placeholder="Roll number" />
-                <Field label="Program" icon={GraduationCap} value={program} onChange={e => setProgram(e.target.value)} placeholder="e.g. BTech, MTech, PhD" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+                {authUser?.roles?.includes('student') && (
+                  <Field label="Roll Number" icon={Hash} value={profile?.profileDetails?.rollNumber} disabled placeholder="Roll number" />
+                )}
+                {authUser?.roles?.includes('student') && (
+                  <Field label="Program" icon={GraduationCap} value={program} onChange={e => setProgram(e.target.value)} placeholder="e.g. BTech, MTech, PhD" />
+                )}
+                {authUser?.roles?.includes('faculty') && (
+                  <Field label="Designation" icon={Briefcase} value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Professor, Assistant Professor" />
+                )}
                 <Field label="Department" icon={Building2} value={department} onChange={e => setDepartment(e.target.value)} placeholder="e.g. CSE, EE, ME" />
-                <Field label="Designation" icon={Briefcase} value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Student, Professor" />
               </div>
               <div className="flex justify-end pt-2">
                 <button type="submit" disabled={savingProfile}

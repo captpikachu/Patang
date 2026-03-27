@@ -102,13 +102,15 @@ const SubscriptionRegistrationView = ({
 
     if (isFormLocked) return;
 
+    const isFaculty = data?.user?.roles?.includes('faculty');
+
     // Mandatory profile fields
     if (!data?.user?.name?.trim()) {
       setValidationError('Your profile name is required. Please update your profile before applying.');
       return;
     }
 
-    if (!data?.user?.rollNumber?.trim()) {
+    if (!isFaculty && !data?.user?.rollNumber?.trim()) {
       setValidationError('Roll number is required. Please update your profile before applying.');
       return;
     }
@@ -208,19 +210,21 @@ const SubscriptionRegistrationView = ({
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Full name <span className="text-red-500">*</span></label>
-                  <input value={data?.user?.name || ''} readOnly className={`${readOnlyFieldClassName} ${!data?.user?.name?.trim() ? 'border-red-300 bg-red-50' : ''}`} />
-                  {!data?.user?.name?.trim() && <p className="mt-1 text-xs text-red-500">Name is required. Update your profile.</p>}
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Email</label>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Email Address <span className="text-red-500">*</span></label>
                   <input value={data?.user?.email || ''} readOnly className={readOnlyFieldClassName} />
                 </div>
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Roll number <span className="text-red-500">*</span></label>
-                  <input value={data?.user?.rollNumber || 'Not available'} readOnly className={`${readOnlyFieldClassName} ${!data?.user?.rollNumber?.trim() ? 'border-red-300 bg-red-50' : ''}`} />
-                  {!data?.user?.rollNumber?.trim() && <p className="mt-1 text-xs text-red-500">Roll number is required. Update your profile.</p>}
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Full name</label>
+                  <input value={data?.user?.name || ''} readOnly className={`${readOnlyFieldClassName} ${!data?.user?.name?.trim() ? 'border-red-300 bg-red-50' : ''}`} />
+                  {!data?.user?.name?.trim() && <p className="mt-1 text-xs text-red-500">Name is required. Update your profile.</p>}
                 </div>
+                {!data?.user?.roles?.includes('faculty') && (
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Roll number <span className="text-red-500">*</span></label>
+                    <input value={data?.user?.rollNumber || 'Not available'} readOnly className={`${readOnlyFieldClassName} ${!data?.user?.rollNumber?.trim() ? 'border-red-300 bg-red-50' : ''}`} />
+                    {!data?.user?.rollNumber?.trim() && <p className="mt-1 text-xs text-red-500">Roll number is required. Update your profile.</p>}
+                  </div>
+                )}
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Department</label>
                   <input value={data?.user?.department || 'Not available'} readOnly className={readOnlyFieldClassName} />
