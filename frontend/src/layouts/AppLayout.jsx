@@ -369,6 +369,8 @@ const Topbar = ({ onMenuToggle }) => {
     if (user?.roles?.includes('gym_admin')) return 'Gym Admin';
     if (user?.roles?.includes('swim_admin')) return 'Swim Admin';
     if (user?.roles?.includes('coordinator')) return 'Coordinator';
+    if (user?.roles?.includes('captain')) return 'Captain';
+    if (user?.roles?.includes('caretaker')) return 'Caretaker';
     return 'Student';
   })();
 

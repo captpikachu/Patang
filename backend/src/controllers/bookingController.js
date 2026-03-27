@@ -73,7 +73,9 @@ const getCaretakerFacilityFilter = (req) => {
     }
 
     const assignedFacilities = req.user.profileDetails?.assignedFacilities || [];
-    return assignedFacilities.length ? assignedFacilities : [];
+    // If specific facilities are assigned, restrict to them. 
+    // Otherwise, grant global access (null).
+    return assignedFacilities.length ? assignedFacilities : null;
 };
 
 const findUserByIdentifier = async (identifier) => {
