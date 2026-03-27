@@ -85,6 +85,6 @@ subscriptionV2Schema.index({ userId: 1, status: 1 });
 subscriptionV2Schema.index({ facilityType: 1, status: 1 });
 subscriptionV2Schema.index({ endDate: 1 });
 
-const SubscriptionV2 = mongoose.model('SubscriptionV2', subscriptionV2Schema);
+const SubscriptionV2 = mongoose.model('SubscriptionV2', subscriptionV2Schema, 'subscriptionv2');
 
 export default SubscriptionV2;

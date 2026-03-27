@@ -41,6 +41,8 @@ export const calculateEndDate = (startDate, plan) => {
  */
 export const generateQRCode = async (passId, userId) => {
     const payload = JSON.stringify({ passId, userId: String(userId) });
-    const qrDataUrl = await QRCode.toDataURL(payload);
+    const qrDataUrl = await QRCode.toDataURL(payload, {
+        color: { dark: '#000000', light: '#FFFFFF' }
+    });
     return qrDataUrl;
 };

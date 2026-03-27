@@ -1,6 +1,7 @@
 import SportsBooking from '../models/SportsBooking.js';
 import Booking from '../models/Booking.js';
 import SubscriptionV2 from '../models/SubscriptionV2.js';
+import SportsSlot from '../models/SportsSlot.js';
 import Penalty from '../models/Penalty.js';
 import AccessLog from '../models/AccessLog.js';
 import Event from '../models/Event.js';
