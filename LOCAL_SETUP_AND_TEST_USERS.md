@@ -124,6 +124,10 @@ All dedicated role accounts below are active, verified, and use:
 | Gym Admin | `gymadmin@iitk.ac.in` | `69c57361cf993766a56dd0e9` | Gym dashboard / request review / scanner |
 | Swim Admin | `swimadmin@iitk.ac.in` | `69c64a7465213dd459f6ca63` | Swimming dashboard / request review / scanner |
 
+Note:
+- the `_id` values above are from the current shared MongoDB instance
+- if a teammate seeds a fresh personal DB, the same emails/passwords will exist but the Mongo `_id` values will be different
+
 ### Sports-specific caretaker accounts
 
 The shared `caretaker@iitk.ac.in` account is currently assigned to all sports-related facilities in the shared DB for testing convenience. In production, caretakers would normally only be assigned to their own sport/facility scope.

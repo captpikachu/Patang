@@ -131,6 +131,19 @@ const seed = async () => {
     },
   });
 
+  await upsertUser({
+    name: 'Patang Faculty',
+    email: 'faculty@iitk.ac.in',
+    password: 'password123',
+    roles: ['faculty'],
+    status: 'active',
+    isVerified: true,
+    profileDetails: {
+      designation: 'Professor',
+      department: 'CSE',
+    },
+  });
+
   const gymAdmin = await upsertUser({
     name: 'Patang Gym Admin',
     email: 'gymadmin@iitk.ac.in',
@@ -141,6 +154,19 @@ const seed = async () => {
     profileDetails: {},
   });
 
+  await upsertUser({
+    name: 'Patang Swim Admin',
+    email: 'swimadmin@iitk.ac.in',
+    password: 'password123',
+    roles: ['swim_admin'],
+    status: 'active',
+    isVerified: true,
+    profileDetails: {
+      designation: 'Swimming Administrator',
+      department: 'Facilities',
+    },
+  });
+
   const executive = await upsertUser({
     name: 'Patang Executive',
     email: 'executive@iitk.ac.in',
@@ -149,6 +175,49 @@ const seed = async () => {
     status: 'active',
     isVerified: true,
     profileDetails: {},
+  });
+
+  await upsertUser({
+    name: 'Patang Admin',
+    email: 'admin@iitk.ac.in',
+    password: 'password123',
+    roles: ['admin'],
+    status: 'active',
+    isVerified: true,
+    profileDetails: {
+      designation: 'System Admin',
+      department: 'Sports Council',
+    },
+  });
+
+  await upsertUser({
+    name: 'Patang Coordinator',
+    email: 'coordinator@iitk.ac.in',
+    password: 'password123',
+    roles: ['coordinator'],
+    status: 'active',
+    isVerified: true,
+    profileDetails: {
+      rollNumber: '230055',
+      department: 'ECE',
+      program: 'BTech',
+    },
+  });
+
+  await upsertUser({
+    name: 'Patang Badminton Captain',
+    email: 'captain.badminton@iitk.ac.in',
+    password: 'password123',
+    roles: ['captain'],
+    captainOf: 'Badminton',
+    status: 'active',
+    isVerified: true,
+    profileDetails: {
+      rollNumber: '230045',
+      department: 'ME',
+      program: 'BTech',
+      sportType: 'Badminton',
+    },
   });
 
   const badmintonCourt = await upsertFacility(
@@ -335,17 +404,31 @@ const seed = async () => {
     }
   );
 
+  const sportsScopedFacilities = await Facility.find({
+    $or: [
+      { facilityType: 'sports' },
+      { sportType: { $in: ['Badminton', 'Basketball', 'Cricket', 'Football', 'Squash', 'Table Tennis', 'Tennis', 'Gym', 'SwimmingPool'] } },
+    ],
+  }).select('_id');
+
   caretaker.profileDetails = {
     ...(caretaker.profileDetails || {}),
-    assignedFacilities: [badmintonCourt._id],
+    assignedFacilities: sportsScopedFacilities.map((facility) => facility._id),
+    sportType: 'All Sports',
+    designation: 'Sports Caretaker',
   };
   await caretaker.save();
 
   console.log('Seed complete.');
   console.log('Student login: student@iitk.ac.in / password123');
+  console.log('Faculty login: faculty@iitk.ac.in / password123');
   console.log('Caretaker login: caretaker@iitk.ac.in / password123');
+  console.log('Captain login: captain.badminton@iitk.ac.in / password123');
+  console.log('Coordinator login: coordinator@iitk.ac.in / password123');
   console.log('Gym admin login: gymadmin@iitk.ac.in / password123');
+  console.log('Swim admin login: swimadmin@iitk.ac.in / password123');
   console.log('Executive login: executive@iitk.ac.in / password123');
+  console.log('Admin login: admin@iitk.ac.in / password123');
 };
 
 seed()
