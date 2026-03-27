@@ -1,148 +1,558 @@
-# Backend Implementation Overview
+# Backend Documentation
 
-This document provides a detailed overview of the backend implementation for the student/faculty user portal, the coordinator portal, the feedback system, and the underlying data models.
+This document is the consolidated and updated backend reference for Patang. It replaces the older split between the general backend document and the sports/facilities/calendar implementation note.
 
-## 1. Architecture & Tech Stack
+## 1. Stack and Architecture
 
-The backend is built using:
-- **Node.js & Express.js (v5)**: The core web framework. Express handles routing, middleware execution, and HTTP requests/responses.
-- **MongoDB & Mongoose (v9)**: The NoSQL database and Object Data Modeling (ODM) library used for data persistence.
-- **JWT (JSON Web Tokens)**: Used for stateless authentication.
-- **Multer**: Middleware for handling `multipart/form-data`, specifically used for file uploads (e.g., medical certificates, event posters).
-- **Nodemailer**: Used for sending OTP emails during registration and password resets.
+- Runtime: Node.js
+- Framework: Express.js
+- Database: MongoDB with Mongoose
+- Authentication: JWT-based auth with role-based authorization middleware
+- File handling: Multer for multipart uploads
+- Email flows: OTP and reset email support
+- Scheduling: `node-cron` jobs for slot generation, group expiry, no-show marking, and subscription expiry
+- Package manager: `pnpm`
 
-## 2. Core Concepts
+The backend currently mixes legacy flows and newer V2 flows. Both still exist in the repo, and some aggregated endpoints normalize data from both models for the frontend.
 
-### 2.1 Authentication & Authorization
-Authentication is token-based. The `protectRoute` middleware intercepts incoming requests, verifies the JWT in the `Authorization: Bearer <token>` header, and populates `req.user` with the authenticated user's details.
+## 2. Core Backend Concepts
 
-Authorization is role-based. The `authorizeRoles(...roles)` middleware restricts access to specific endpoints based on the authenticated user's assigned roles.
+### 2.1 Authentication and Authorization
 
-**Roles defined in User schema**:
-`student`, `faculty`, `caretaker`, `coach`, `executive`, `admin`, `coordinator`, `gym_admin`, `swim_admin`
+- `protectRoute` authenticates the request and populates `req.user`.
+- `authorizeRoles(...roles)` restricts route access by role.
 
-### 2.2 Standardized Responses
-API responses are standardized using utility functions in `src/utils/apiResponse.js`:
-- `successResponse(res, statusCode, data, message)`
-- `errorResponse(res, statusCode, errorCode, errorMessage, details)`
+Current role surface in the backend includes:
+- `student`
+- `faculty`
+- `caretaker`
+- `coach`
+- `executive`
+- `admin`
+- `coordinator`
+- `captain`
+- `gym_admin`
+- `swim_admin`
 
-### 2.3 The "V1" vs "V2" Challenge
-The codebase contains a mix of "V1" and "V2" models/controllers. V1 represents the initial implementation, while V2 (`*V2.js` controllers, `Booking` vs `SportsBooking` models) was introduced later to comply with a newer, more rigorous API specification (especially regarding group bookings and QR passes).
-**The current implementation gracefully handles both**: High-level aggregated endpoints (like Dashboard and History) query both V1 and V2 models, normalize the data into a consistent format, and return a unified view to the frontend.
+### 2.2 Response Shape
 
----
+The backend uses standardized success and error helpers from `src/utils/apiResponse.js`, especially in the newer controllers.
 
-## 3. Implemented Features & Modules
+### 2.3 Legacy vs V2 Flows
 
-### 3.1 Authentication Module (`authController.js`)
-Handles all user identity operations.
-- **POST `/api/auth/register`**: Creates an unverified user and sends an OTP to their IITK email.
-- **POST `/api/auth/verify-otp`**: Verifies the OTP and activates the account, returning a JWT.
-- **POST `/api/auth/login`**: Authenticates email/password and returns a JWT.
-- **POST `/api/auth/forgot-password` & `/reset-password`**: OTP-based password recovery flow.
+There are two main booking/subscription generations in the codebase:
 
-### 3.2 User Portal
-The user portal is designed around aggregated data endpoints. Instead of the frontend making dozens of API calls, a single GET request fetches all data needed to render an entire page.
+- Legacy:
+  - `Booking`
+  - `TimeSlot`
+  - `Subscription`
+  - `SubscriptionPlan`
+- V2 / newer:
+  - `SportsBooking`
+  - `SportsSlot`
+  - `SubscriptionV2`
 
-#### A. Dashboard (`dashboardController.js`)
-**GET `/api/dashboard`**
-The primary landing page. Runs 8 parallel database queries to fetch:
-1. Active subscriptions (Gym/Swimming) with QR pass details.
-2. Upcoming sports facility bookings (merges V1 & V2 bookings).
-3. Recent gym/pool access logs (check-ins/check-outs).
-4. Active penalties (no-shows, late cancellations).
-5. Upcoming approved campus events.
-6. A derived **Fair-Use Score** calculated based on booking activity in the last 72 hours and active penalties.
+The frontend uses both, depending on the page and feature. Dashboard/history aggregation also merges multiple sources where needed.
 
-#### B. Slot Booking (`slotBookingController.js`)
-Handles the discovery and registration for facilities.
+## 3. Application Entry and Mounted Route Groups
 
-**GET `/api/slot-booking/sports`**:
-- Fetches available facilities based on the selected `sportType`.
-- Retrieves slot templates mapped against existing bookings to calculate **real-time capacity (`spotsLeft`)**.
-- Determines slot status (Available, Fully Booked, Group Open).
+The main backend entry is [backend/src/app.js](/Users/aarya/repo_main/backend/src/app.js).
 
-**GET `/api/slot-booking/gym` & `/api/slot-booking/swimming`**:
-- Reuses the `SubscriptionPlan` model to show available pricing tiers.
-- Fetches real-time occupancy using the `accessService` (current check-ins).
-- Shows the user's active subscription status if they are already registered.
+Mounted route groups:
 
-#### C. History Page (`historyController.js`)
-Provides historical data across three tabs with pagination (`page`, `limit`):
+- `/api/auth`
+- `/api/facilities`
+- `/api/bookings`
+- `/api/subscriptions`
+- `/api/v2/facilities`
+- `/api/v2/bookings`
+- `/api/v2/subscriptions`
+- `/api/v2/admin/subscriptions`
+- `/api/v2/events`
+- `/api/v2/admin/events`
+- `/api/v2/penalties`
+- `/api/dashboard`
+- `/api/slot-booking`
+- `/api/history`
+- `/api/calendar`
+- `/api/settings`
+- `/api/coordinator`
+- `/api/feedback`
+- `/api/executive`
+- `/api/captain`
+- `/api/executive/captain`
+- `/api/notifications`
 
-**GET `/api/history/sports`**:
-- Merges past V1 and V2 bookings.
-- Calculates monthly attended vs. missed statistics.
+The app also serves `/uploads`, though new subscription documents are now stored through the cloud-backed document storage flow rather than simple local disk paths.
 
-**GET `/api/history/gym-swimming`**:
-- Lists paginated access logs (entries/exits).
-- Shows the user's historical log of subscription plans.
+## 4. Main Functional Modules
 
-**GET `/api/history/penalties`**:
-- Lists all active and past penalties.
-- Calculates suspension consequences (e.g., "7 Day Ban") based on the `suspendedUntil` date.
+### 4.1 Authentication
 
-#### D. Calendar (`calendarController.js`)
-**GET `/api/calendar`**
-- Outputs all approved campus events for the requested month, grouped by date (e.g., `{"2026-03-21": [...]}`).
-- Calculates category breakdowns (e.g., 5 Cultural, 2 Technical).
-- Overlays the user's personal sports bookings onto the calendar.
+Route file: [backend/src/routes/authRoutes.js](/Users/aarya/repo_main/backend/src/routes/authRoutes.js)
 
-#### E. Settings & Profile (`settingsController.js`)
-- **GET `/api/settings`**: Full profile details, subscription summary, account standing.
-- **GET `/api/settings/profile-card`**: A fast, cache-friendly endpoint providing minimal data (name, email, role, fair-use tier) for the top-right avatar dropdown.
-- **PATCH `/api/settings/profile`**: Updates editable fields (name, program, department).
-- **PATCH `/api/settings/password`**: Securely changes the user's password requiring the current password.
+Implemented flows:
+- register user
+- verify OTP
+- login
+- logout
+- forgot password
+- reset password
+- authenticated password update
 
----
+Purpose:
+- handles account creation, verification, session token issuance, and password lifecycle.
 
-### 3.3 Coordinator Portal (`coordinatorController.js`)
-A restricted area for users with `coordinator`, `executive`, or `admin` roles.
+### 4.2 Student and Faculty Dashboard
 
-**GET & POST `/api/coordinator/events`**:
-- Allows coordinators to submit new campus events.
-- Includes `posterUpload` middleware (Multer) for image handling.
-- Submissions create an `Event` document with status `Pending`. They do not go live until an executive approves them.
+Route file: [backend/src/routes/dashboardRoutes.js](/Users/aarya/repo_main/backend/src/routes/dashboardRoutes.js)
 
-**GET & POST `/api/coordinator/venues`**:
-- Allows booking non-sports venues (e.g., Senate Hall, Auditorium).
-- The GET endpoint calculates availability by fetching all `FacilityBlock` records for the selected date.
-- The POST endpoint validates requests (preventing time overlaps) and creates a `FacilityBlock` with status `pending`. This request is routed to executives for approval.
+Controller:
+- [backend/src/controllers/dashboardController.js](/Users/aarya/repo_main/backend/src/controllers/dashboardController.js)
 
----
+Implemented behavior:
+- aggregates subscriptions
+- aggregates upcoming facility bookings
+- returns access logs
+- returns penalties
+- returns events
+- computes fair-use related dashboard metrics
 
-### 3.4 Feedback System (`feedbackController.js`)
-A bidirectional communication channel.
+Purpose:
+- powers the main student/faculty dashboard in a single payload.
 
-**User Facing**:
-- **POST `/api/feedback`**: Users can submit feedback targeted at specific roles (e.g., `caretaker`, `gym_admin`). Supports an `isAnonymous` flag.
-- **GET `/api/feedback`**: Users can view the status of their submitted feedback.
+### 4.3 Sports Slot Booking and Registration Discovery
 
-**Staff Facing (Inbox)**:
-- **GET `/api/feedback/inbox`**: Staff members view feedback addressed to their assigned role. Anonymous submissions have user details completely stripped out at the API level.
-- **PATCH `/api/feedback/:id/reply`**: Allows authorized staff to change the status (e.g., `acknowledged`, `resolved`) and post an `adminReply`.
+Route file: [backend/src/routes/slotBookingRoutes.js](/Users/aarya/repo_main/backend/src/routes/slotBookingRoutes.js)
 
----
+Controller:
+- [backend/src/controllers/slotBookingController.js](/Users/aarya/repo_main/backend/src/controllers/slotBookingController.js)
 
-## 4. Key Data Models
+Implemented pages/data APIs:
+- `GET /api/slot-booking/sports`
+- `GET /api/slot-booking/gym`
+- `GET /api/slot-booking/swimming`
 
-Below are the primary collections managing system state:
+Implemented behavior:
+- sports facility browsing by sport type
+- bookable-date generation
+- stale/past date normalization
+- expired-slot handling
+- participant-aware slot capacity calculation
+- recent and upcoming booking activity feed
+- gym and swimming registration page payloads
+- occupancy snapshot for subscription-based facilities
 
-### Users & Access
-- **`User`**: Core identity, roles, and profile metadata. Passwords are bcrypt-hashed.
-- **`Penalty`**: Issued for no-shows or misuse. An active penalty with a `suspendedUntil` date will block the user from making new bookings.
-- **`AccessLog`**: Simple ledger of when users scanned their pass to enter/exit a facility.
+Purpose:
+- supplies the student slot-booking page for sports and the gym/swimming registration views.
 
-### Bookings & Facilities
-- **`Facility`**: Defines physical locations (courts, gym, pools, venues), capacities, and operational status.
-- **`SportsSlot` & `TimeSlot`**: Define the operating hours/chunks a facility can be booked in.
-- **`SportsBooking` (V2) & `Booking` (V1)**: Records of a user reserving a time block at a facility. Includes attendance status.
-- **`FacilityBlock`**: High-level reservations (e.g., venue bookings by coordinators or facility closures for maintenance). Includes an approval workflow (requestedBy, approvedBy, status).
+### 4.4 Sports Bookings, Caretaker Attendance, and Modification
 
-### Gym & Pool Subscriptions
-- **`SubscriptionPlan`**: The pricing and duration tiers available.
-- **`SubscriptionV2`**: A user's purchased plan. Holds the status (`Pending`, `Approved`), start/end dates, and uniquely identifies the generated pass (`passId`, `qrCode`).
+Route file: [backend/src/routes/bookingRoutes.js](/Users/aarya/repo_main/backend/src/routes/bookingRoutes.js)
 
-### Events & Feedback
-- **`Event`**: Details about campus activities organized by clubs. Includes lifecycle statuses (`Pending`, `Approved`, `Rejected`, `ChangesRequested`).
-- **`Feedback`**: User-submitted communications targeted at specific operational roles, supporting anonymity and staff replies.
+Controller:
+- [backend/src/controllers/bookingController.js](/Users/aarya/repo_main/backend/src/controllers/bookingController.js)
+
+Implemented endpoints:
+- availability check
+- create sports booking
+- list my bookings
+- caretaker booking list
+- caretaker attendee verification by identifier
+- update booking participant count
+- cancel booking
+- mark attendance
+
+Implemented behavior:
+- participant-aware remaining capacity
+- facility block overlap checks
+- caretaker-scoped booking visibility
+- absent/present attendance marking
+- slot release on absence/cancellation paths
+- modification access control
+
+Purpose:
+- supports the newer sports booking UX and the sports caretaker console.
+
+### 4.5 Legacy V2 Booking Lifecycle
+
+Route file: [backend/src/routes/bookingRoutesV2.js](/Users/aarya/repo_main/backend/src/routes/bookingRoutesV2.js)
+
+Controller:
+- [backend/src/controllers/bookingControllerV2.js](/Users/aarya/repo_main/backend/src/controllers/bookingControllerV2.js)
+
+Implemented behavior:
+- legacy booking creation
+- group booking join flow
+- caretaker verification by identifier
+- check-in with QR token
+- explicit release endpoint
+- attendance updates
+- late cancellation penalty flow
+
+Purpose:
+- retains the older spec-compliant booking engine and associated caretaker workflows.
+
+### 4.6 Facility Management
+
+Route files:
+- [backend/src/routes/facilityRoutes.js](/Users/aarya/repo_main/backend/src/routes/facilityRoutes.js)
+- [backend/src/routes/facilityRoutesV2.js](/Users/aarya/repo_main/backend/src/routes/facilityRoutesV2.js)
+
+Controllers:
+- [backend/src/controllers/facilityController.js](/Users/aarya/repo_main/backend/src/controllers/facilityController.js)
+- [backend/src/controllers/facilityControllerV2.js](/Users/aarya/repo_main/backend/src/controllers/facilityControllerV2.js)
+
+Implemented behavior:
+- list facilities
+- create facilities
+- create sports slots
+- fetch facility slots
+- update slot capacity
+- create facility blocks
+- availability endpoint for V2 facilities
+
+Purpose:
+- manages the core physical inventory: courts, gym, swimming pool, venues, and operational blocks.
+
+### 4.7 Gym and Swimming Subscriptions
+
+Route files:
+- [backend/src/routes/subscriptionRoutes.js](/Users/aarya/repo_main/backend/src/routes/subscriptionRoutes.js)
+- [backend/src/routes/subscriptionRoutesV2.js](/Users/aarya/repo_main/backend/src/routes/subscriptionRoutesV2.js)
+- [backend/src/routes/subscriptionAdminRoutes.js](/Users/aarya/repo_main/backend/src/routes/subscriptionAdminRoutes.js)
+
+Controllers:
+- [backend/src/controllers/subscriptionController.js](/Users/aarya/repo_main/backend/src/controllers/subscriptionController.js)
+- [backend/src/controllers/subscriptionControllerV2.js](/Users/aarya/repo_main/backend/src/controllers/subscriptionControllerV2.js)
+
+Implemented student-side behavior:
+- fetch plans
+- apply for gym/swimming subscription
+- upload medical certificate and payment receipt
+- view my subscriptions
+- view protected uploaded documents through authorized routes
+
+Implemented admin-side behavior:
+- list pending applications
+- approve or reject applications
+- generate pass IDs and QR codes on approval
+- compute occupancy summaries
+- compute per-slot occupancy for admin dashboards
+- verify entry using pass data
+- restrict scans to allowed facility operating hours
+
+Important current implementation note:
+- gym and swimming registration are pass-based, not user-slot-assigned.
+- users do not need to choose a subscription time slot during registration.
+- admins can scan valid passes only during active facility slot windows.
+
+### 4.8 Cloud-backed Subscription Document Storage
+
+Key files:
+- [backend/src/services/fileStorageService.js](/Users/aarya/repo_main/backend/src/services/fileStorageService.js)
+- [backend/src/controllers/subscriptionControllerV2.js](/Users/aarya/repo_main/backend/src/controllers/subscriptionControllerV2.js)
+
+Implemented behavior:
+- incoming medical certificate and payment receipt uploads are stored through the backend document storage layer
+- `SubscriptionV2` stores protected document references and file IDs
+- documents are exposed through authorized streaming routes instead of public raw upload URLs for new submissions
+
+Purpose:
+- keeps subscription documents associated with the user and accessible to authorized reviewers.
+
+### 4.9 Penalties and Fair Use
+
+Route file:
+- [backend/src/routes/penaltyRoutes.js](/Users/aarya/repo_main/backend/src/routes/penaltyRoutes.js)
+
+Controllers/services:
+- [backend/src/controllers/penaltyController.js](/Users/aarya/repo_main/backend/src/controllers/penaltyController.js)
+- [backend/src/services/bookingService.js](/Users/aarya/repo_main/backend/src/services/bookingService.js)
+- [backend/src/services/penaltyService.js](/Users/aarya/repo_main/backend/src/services/penaltyService.js)
+
+Implemented behavior:
+- view my penalties
+- rolling booking quota checks
+- late cancellation penalties
+- no-show penalties
+- booking suspension support via penalty state
+
+Purpose:
+- enforces fair use and misuse consequences for sports bookings.
+
+### 4.10 History
+
+Route file:
+- [backend/src/routes/historyRoutes.js](/Users/aarya/repo_main/backend/src/routes/historyRoutes.js)
+
+Controller:
+- [backend/src/controllers/historyController.js](/Users/aarya/repo_main/backend/src/controllers/historyController.js)
+
+Implemented behavior:
+- sports booking history
+- gym/swimming access and subscription history
+- penalties history
+- filtering and pagination support
+
+Purpose:
+- powers the user-facing historical records pages.
+
+### 4.11 Calendar and Events
+
+Route files:
+- [backend/src/routes/calendarRoutes.js](/Users/aarya/repo_main/backend/src/routes/calendarRoutes.js)
+- [backend/src/routes/eventRoutes.js](/Users/aarya/repo_main/backend/src/routes/eventRoutes.js)
+- [backend/src/routes/eventAdminRoutes.js](/Users/aarya/repo_main/backend/src/routes/eventAdminRoutes.js)
+
+Controllers:
+- [backend/src/controllers/calendarController.js](/Users/aarya/repo_main/backend/src/controllers/calendarController.js)
+- [backend/src/controllers/eventController.js](/Users/aarya/repo_main/backend/src/controllers/eventController.js)
+- [backend/src/controllers/eventAdminController.js](/Users/aarya/repo_main/backend/src/controllers/eventAdminController.js)
+
+Implemented behavior:
+- public authenticated approved-events feed
+- user event listing
+- event creation
+- event update
+- event cancellation
+- executive/admin moderation of pending events
+- calendar month view aggregation
+- category and time-based calendar shaping
+- overlay of user-relevant activities
+
+Purpose:
+- supports the unified campus calendar and club-event lifecycle.
+
+### 4.12 Coordinator Portal
+
+Route file:
+- [backend/src/routes/coordinatorRoutes.js](/Users/aarya/repo_main/backend/src/routes/coordinatorRoutes.js)
+
+Controller:
+- [backend/src/controllers/coordinatorController.js](/Users/aarya/repo_main/backend/src/controllers/coordinatorController.js)
+
+Implemented behavior:
+- coordinator event-management page data
+- coordinator event submission with poster upload
+- venue booking page data
+- venue booking request submission
+
+Purpose:
+- allows coordinators to create event proposals and request venue reservations.
+
+### 4.13 Feedback
+
+Route file:
+- [backend/src/routes/feedbackRoutes.js](/Users/aarya/repo_main/backend/src/routes/feedbackRoutes.js)
+
+Controller:
+- [backend/src/controllers/feedbackController.js](/Users/aarya/repo_main/backend/src/controllers/feedbackController.js)
+
+Implemented behavior:
+- fetch feedback page data
+- submit feedback
+- feedback inbox for staff/admin-side roles
+- reply and status update flow
+
+Supported reviewer roles:
+- coordinator
+- caretaker
+- executive
+- admin
+- gym_admin
+- swim_admin
+
+Purpose:
+- provides a two-sided feedback and reply channel between users and operational staff.
+
+### 4.14 Settings and Profile
+
+Route file:
+- [backend/src/routes/settingsRoutes.js](/Users/aarya/repo_main/backend/src/routes/settingsRoutes.js)
+
+Controller:
+- [backend/src/controllers/settingsController.js](/Users/aarya/repo_main/backend/src/controllers/settingsController.js)
+
+Implemented behavior:
+- full settings page payload
+- lightweight profile-card endpoint
+- profile update
+- password change
+
+Purpose:
+- backs the account/profile area used across the frontend shell.
+
+### 4.15 Executive Administration
+
+Route file:
+- [backend/src/routes/executiveRoutes.js](/Users/aarya/repo_main/backend/src/routes/executiveRoutes.js)
+
+Controllers:
+- [backend/src/controllers/executiveController.js](/Users/aarya/repo_main/backend/src/controllers/executiveController.js)
+- [backend/src/controllers/executiveVenueController.js](/Users/aarya/repo_main/backend/src/controllers/executiveVenueController.js)
+
+Implemented behavior:
+- executive dashboard
+- pending venue review
+- venue approval/rejection
+- analytics overview
+- booking analytics
+- subscription analytics
+- user listing and user detail
+- role updates
+- penalty listing and penalty update
+- facility admin listing and facility update
+- audit log
+
+Current access note:
+- `executive`, `admin`, `gym_admin`, and `swim_admin` can access this route group in the backend.
+
+Purpose:
+- central administrative layer for operations, moderation, and analytics.
+
+### 4.16 Captain Workflows
+
+Route files:
+- [backend/src/routes/captainRoutes.js](/Users/aarya/repo_main/backend/src/routes/captainRoutes.js)
+- [backend/src/routes/captainAdminRoutes.js](/Users/aarya/repo_main/backend/src/routes/captainAdminRoutes.js)
+
+Controllers:
+- [backend/src/controllers/captainController.js](/Users/aarya/repo_main/backend/src/controllers/captainController.js)
+- [backend/src/controllers/captainAdminController.js](/Users/aarya/repo_main/backend/src/controllers/captainAdminController.js)
+
+Implemented behavior:
+- captains can create practice block requests
+- captains can view, edit, and cancel their practice blocks
+- executives/admins can list captains
+- executives/admins can appoint or dismiss captains
+- executives/admins can review pending practice blocks
+
+Purpose:
+- supports team practice-block scheduling and captain administration.
+
+### 4.17 Notifications
+
+Route file:
+- [backend/src/routes/notificationRoutes.js](/Users/aarya/repo_main/backend/src/routes/notificationRoutes.js)
+
+Controller:
+- [backend/src/controllers/notificationController.js](/Users/aarya/repo_main/backend/src/controllers/notificationController.js)
+
+Implemented behavior:
+- list my notifications
+- mark one as read
+- mark all as read
+
+The backend also creates notifications from booking and subscription workflows where applicable.
+
+## 5. Main Data Models
+
+Core models in [backend/src/models](/Users/aarya/repo_main/backend/src/models):
+
+### Identity and Access
+- `User`: authentication, roles, and profile details
+- `Notification`: user notification records
+- `AccessLog`: facility entry/exit logs
+- `AccessPass`: legacy access-pass support
+- `AuditLog`: administrative audit trail
+
+### Facilities and Booking
+- `Facility`: facility metadata and operational flags
+- `SportsSlot`: current slot model for sports and facility-hour windows
+- `TimeSlot`: legacy slot model
+- `SportsBooking`: current sports booking model
+- `Booking`: legacy booking model
+- `FacilityBlock`: venue/facility reservations, closures, and reviewable blocks
+- `TeamPracticeBlock`: captain practice requests
+
+### Subscription
+- `SubscriptionPlan`: legacy subscription plan model
+- `Subscription`: legacy subscription request/pass model
+- `SubscriptionV2`: current pass-based gym/swimming subscription model
+
+### Operational Modules
+- `Penalty`: no-show, late cancellation, and related punishments
+- `Event`: event lifecycle and moderation model
+- `Feedback`: feedback and staff reply model
+
+## 6. Current Business Rules Reflected in Code
+
+### Sports Booking
+- booking availability is capacity-aware
+- participant count affects remaining capacity
+- expired slots are treated as unavailable
+- past or stale requested dates are normalized/rejected
+- facility blocks can make slots unavailable
+- active booking quotas are enforced across a rolling window
+
+### Caretaker Attendance
+- caretakers can see upcoming assigned bookings
+- verification can be done by roll number or email
+- absence can release a slot back into circulation
+
+### Gym and Swimming
+- users apply with documents, not a chosen slot
+- pass approval issues QR and validity metadata
+- QR verification is allowed only during valid facility operating hours
+- occupancy derives from facility plus access-log data
+
+### Event and Venue Workflow
+- coordinators submit
+- executives/admins review
+- approved items surface to the calendar and related dashboards
+
+## 7. Scheduled Jobs
+
+Job files:
+- [backend/src/jobs/groupExpiryJob.js](/Users/aarya/repo_main/backend/src/jobs/groupExpiryJob.js)
+- [backend/src/jobs/noShowJob.js](/Users/aarya/repo_main/backend/src/jobs/noShowJob.js)
+- [backend/src/jobs/slotGenerationJob.js](/Users/aarya/repo_main/backend/src/jobs/slotGenerationJob.js)
+- [backend/src/jobs/subscriptionExpiryJob.js](/Users/aarya/repo_main/backend/src/jobs/subscriptionExpiryJob.js)
+
+Implemented jobs:
+- group expiry: auto-cancels unfilled group bookings near slot start
+- no-show job: marks unattended legacy bookings and applies penalties
+- slot generation: generates future slots for active facilities
+- subscription expiry: expires approved subscriptions whose end date has passed
+
+## 8. Validation and Upload Middleware
+
+Key files:
+- [backend/src/middlewares/validate.js](/Users/aarya/repo_main/backend/src/middlewares/validate.js)
+- [backend/src/middlewares/upload.js](/Users/aarya/repo_main/backend/src/middlewares/upload.js)
+
+Implemented validation areas:
+- booking request validation
+- subscription apply validation
+- event create/update validation
+- admin event action validation
+- subscription admin action validation
+
+Implemented upload areas:
+- subscription documents
+- event poster upload
+- upload size/type checks
+
+## 9. Testing Coverage
+
+The backend now includes both unit and route-level integration coverage.
+
+Current tested areas include:
+- auth controller
+- dashboard controller
+- booking controller
+- booking controller V2
+- slot booking controller
+- subscription controller V2
+- access service
+- booking service
+- subscription route integration
+- subscription admin route integration
+
+See:
+- [TEST_INVENTORY.md](/Users/aarya/repo_main/TEST_INVENTORY.md)
+
+## 10. Notes on Documentation Consolidation
+
+This file now subsumes the older sports/facilities/calendar backend note. The sports, facilities, subscription, calendar, events, coordinator, caretaker, and admin workflows are all documented here so the repo has a single backend reference point.
