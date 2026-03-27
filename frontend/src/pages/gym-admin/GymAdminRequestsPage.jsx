@@ -32,6 +32,14 @@ const GymAdminRequestsPage = () => {
   const [documentLoading, setDocumentLoading] = useState(false);
   const [documentError, setDocumentError] = useState('');
 
+  const inferMimeType = (documentPath = '', disposition = '') => {
+    const source = `${documentPath} ${disposition}`.toLowerCase();
+    if (source.includes('.pdf')) return 'application/pdf';
+    if (source.includes('.png')) return 'image/png';
+    if (source.includes('.jpg') || source.includes('.jpeg')) return 'image/jpeg';
+    return '';
+  };
+
   const fetchRequests = async () => {
     setLoading(true);
     setError('');
@@ -77,7 +85,8 @@ const GymAdminRequestsPage = () => {
 
       const response = await api.get(requestPath, { responseType: 'blob' });
       const blob = response.data;
-      setDocumentMimeType(blob.type || '');
+      const inferredMimeType = blob.type || response.headers['content-type'] || inferMimeType(documentPath, response.headers['content-disposition']);
+      setDocumentMimeType(inferredMimeType);
       setDocumentUrl(URL.createObjectURL(blob));
     } catch (err) {
       setDocumentError(err.response?.data?.message || 'Failed to load document');

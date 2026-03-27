@@ -1,6 +1,16 @@
 import mongoose from 'mongoose';
+import path from 'path';
 
 const GRIDFS_BUCKET_NAME = 'subscriptionDocuments';
+
+const MIME_TYPE_BY_EXTENSION = {
+  '.pdf': 'application/pdf',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png'
+};
+
+const inferMimeType = (filename = '') => MIME_TYPE_BY_EXTENSION[path.extname(filename).toLowerCase()] || null;
 
 const getBucket = () => new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
   bucketName: GRIDFS_BUCKET_NAME,
@@ -39,8 +49,10 @@ export const streamSubscriptionDocument = async ({ fileId, res }) => {
     return null;
   }
 
-  if (file.contentType) {
-    res.setHeader('Content-Type', file.contentType);
+  const contentType = file.contentType || inferMimeType(file.filename);
+
+  if (contentType) {
+    res.setHeader('Content-Type', contentType);
   }
   res.setHeader('Content-Disposition', `inline; filename="${file.filename}"`);
 
