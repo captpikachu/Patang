@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import SubscriptionV2 from '../models/SubscriptionV2.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 import { generatePassId, calculateEndDate, generateQRCode } from '../services/subscriptionService.js';
+import { storeSubscriptionDocument, streamSubscriptionDocument } from '../services/fileStorageService.js';
 import {
     createAccessLog,
     getFacilityOccupancySummary,
@@ -30,16 +32,34 @@ export const apply = async (req, res) => {
             return errorResponse(res, 409, 'ACTIVE_SUBSCRIPTION_EXISTS', 'You already have an active or pending subscription for this facility');
         }
 
-        // Build file URLs from multer
-        const medicalCertUrl = req.files.medicalCert[0].path.replace(/\\/g, '/');
-        const paymentReceiptUrl = req.files.paymentReceipt[0].path.replace(/\\/g, '/');
+        const medicalCertUpload = await storeSubscriptionDocument({
+            buffer: req.files.medicalCert[0].buffer,
+            filename: req.files.medicalCert[0].originalname,
+            mimeType: req.files.medicalCert[0].mimetype,
+            ownerId: userId,
+            facilityType,
+            documentType: 'medicalCert',
+        });
+        const paymentReceiptUpload = await storeSubscriptionDocument({
+            buffer: req.files.paymentReceipt[0].buffer,
+            filename: req.files.paymentReceipt[0].originalname,
+            mimeType: req.files.paymentReceipt[0].mimetype,
+            ownerId: userId,
+            facilityType,
+            documentType: 'paymentReceipt',
+        });
+
+        const subscriptionId = new mongoose.Types.ObjectId();
 
         const subscription = await SubscriptionV2.create({
+            _id: subscriptionId,
             userId,
             facilityType,
             plan,
-            medicalCertUrl,
-            paymentReceiptUrl
+            medicalCertUrl: `/api/v2/subscriptions/${subscriptionId}/documents/medicalCert`,
+            medicalCertFileId: medicalCertUpload.fileId,
+            paymentReceiptUrl: `/api/v2/subscriptions/${subscriptionId}/documents/paymentReceipt`,
+            paymentReceiptFileId: paymentReceiptUpload.fileId
         });
 
         return successResponse(res, 201, {
@@ -63,6 +83,57 @@ export const getMySubscriptions = async (req, res) => {
             .sort({ createdAt: -1 });
 
         return successResponse(res, 200, subscriptions);
+    } catch (error) {
+        return errorResponse(res, 500, 'SERVER_ERROR', error.message);
+    }
+};
+
+/**
+ * GET /api/v2/subscriptions/:subscriptionId/documents/:documentType
+ * Stream a protected subscription document for the owner or scoped admins.
+ */
+export const getSubscriptionDocument = async (req, res) => {
+    try {
+        const { subscriptionId, documentType } = req.params;
+
+        if (!['medicalCert', 'paymentReceipt'].includes(documentType)) {
+            return errorResponse(res, 400, 'VALIDATION_ERROR', 'documentType must be medicalCert or paymentReceipt');
+        }
+
+        const subscription = await SubscriptionV2.findById(subscriptionId);
+        if (!subscription) {
+            return errorResponse(res, 404, 'NOT_FOUND', 'Subscription not found');
+        }
+
+        const isOwner = String(subscription.userId) === String(req.user._id);
+        if (!isOwner) {
+            const scopedTypes = getScopedSubscriptionTypes(req.user.roles, subscription.facilityType);
+            if (!scopedTypes.length && !req.user.roles?.includes('admin') && !req.user.roles?.includes('executive')) {
+                return errorResponse(res, 403, 'FORBIDDEN', 'You are not allowed to view this document');
+            }
+        }
+
+        const fileId = documentType === 'medicalCert'
+            ? subscription.medicalCertFileId
+            : subscription.paymentReceiptFileId;
+
+        if (!fileId) {
+            return errorResponse(res, 404, 'DOCUMENT_NOT_FOUND', 'Document file is missing');
+        }
+
+        const stream = await streamSubscriptionDocument({ fileId, res });
+        if (!stream) {
+            return errorResponse(res, 404, 'DOCUMENT_NOT_FOUND', 'Document file is missing');
+        }
+
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                return errorResponse(res, 500, 'SERVER_ERROR', 'Failed to read document');
+            }
+            res.destroy();
+        });
+
+        stream.pipe(res);
     } catch (error) {
         return errorResponse(res, 500, 'SERVER_ERROR', error.message);
     }
