@@ -12,8 +12,6 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
 const GymAdminRequestsPage = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +27,18 @@ const GymAdminRequestsPage = () => {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [documentMimeType, setDocumentMimeType] = useState('');
+  const [documentLoading, setDocumentLoading] = useState(false);
+  const [documentError, setDocumentError] = useState('');
+
+  const inferMimeType = (documentPath = '', disposition = '') => {
+    const source = `${documentPath} ${disposition}`.toLowerCase();
+    if (source.includes('.pdf')) return 'application/pdf';
+    if (source.includes('.png')) return 'image/png';
+    if (source.includes('.jpg') || source.includes('.jpeg')) return 'image/jpeg';
+    return '';
+  };
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -49,19 +59,67 @@ const GymAdminRequestsPage = () => {
     fetchRequests();
   }, [statusFilter]);
 
+  const revokeDocumentPreview = () => {
+    if (documentUrl) {
+      URL.revokeObjectURL(documentUrl);
+    }
+    setDocumentUrl('');
+    setDocumentMimeType('');
+    setDocumentLoading(false);
+    setDocumentError('');
+  };
+
+  const fetchDocumentPreview = async (documentPath) => {
+    if (!documentPath) {
+      setDocumentError('Document URL is missing');
+      return;
+    }
+
+    setDocumentLoading(true);
+    setDocumentError('');
+
+    try {
+      const requestPath = documentPath.startsWith('/api/')
+        ? documentPath.replace(/^\/api/, '')
+        : documentPath;
+
+      const response = await api.get(requestPath, { responseType: 'blob' });
+      const blob = response.data;
+      const inferredMimeType = blob.type || response.headers['content-type'] || inferMimeType(documentPath, response.headers['content-disposition']);
+      setDocumentMimeType(inferredMimeType);
+      setDocumentUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setDocumentError(err.response?.data?.message || 'Failed to load document');
+    } finally {
+      setDocumentLoading(false);
+    }
+  };
+
   const handleOpenModal = (request, type) => {
+    revokeDocumentPreview();
     setSelectedRequest(request);
     setActionType(type);
     setReason('');
     setActionError('');
+
+    if (type === 'view_receipt') {
+      fetchDocumentPreview(request.paymentReceiptUrl);
+    }
+
+    if (type === 'view_medical') {
+      fetchDocumentPreview(request.medicalCertUrl);
+    }
   };
 
   const handleCloseModal = () => {
+    revokeDocumentPreview();
     setSelectedRequest(null);
     setActionType(null);
     setReason('');
     setActionError('');
   };
+
+  useEffect(() => revokeDocumentPreview, []);
 
   const handleSubmitAction = async () => {
     if ((actionType === 'reject' || actionType === 'revoke') && !reason.trim()) {
@@ -123,12 +181,6 @@ const GymAdminRequestsPage = () => {
       month: 'short',
       day: 'numeric'
     });
-  };
-
-  const getFullImageUrl = (url) => {
-    if (!url) return null;
-    if (url.startsWith('http')) return url;
-    return `${backendUrl}/${url.replace(/\\/g, '/')}`;
   };
 
   return (
@@ -247,15 +299,14 @@ const GymAdminRequestsPage = () => {
                       View Payment Receipt
                     </button>
                     {request.medicalCertUrl && (
-                       <a
-                         href={getFullImageUrl(request.medicalCertUrl)}
-                         target="_blank"
-                         rel="noreferrer"
+                       <button
+                         type="button"
+                         onClick={() => handleOpenModal(request, 'view_medical')}
                          className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-100 transition-colors"
                        >
                          <ImageIcon size={14} className="text-blue-500" />
                          View Medical Cert
-                       </a>
+                       </button>
                     )}
                   </div>
                 </div>
@@ -302,26 +353,45 @@ const GymAdminRequestsPage = () => {
           <div className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm" onClick={handleCloseModal} />
           
           {/* View Receipt Modal */}
-          {actionType === 'view_receipt' ? (
+          {actionType === 'view_receipt' || actionType === 'view_medical' ? (
              <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-xl z-50 flex flex-col overflow-hidden">
                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                 <h3 className="text-lg font-bold text-gray-800">Payment Receipt</h3>
+                 <h3 className="text-lg font-bold text-gray-800">
+                   {actionType === 'view_receipt' ? 'Payment Receipt' : 'Medical Certificate'}
+                 </h3>
                  <button onClick={handleCloseModal} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500">
                    <X size={20} />
                  </button>
                </div>
                <div className="p-4 overflow-y-auto bg-gray-50 flex-1 flex justify-center items-center">
-                 {selectedRequest.paymentReceiptUrl ? (
-                   <img 
-                     src={getFullImageUrl(selectedRequest.paymentReceiptUrl)} 
-                     alt="Payment Receipt" 
-                     className="max-w-full max-h-[70vh] object-contain rounded-lg border border-gray-200 shadow-sm"
-                     onError={(e) => { e.target.src = ''; e.target.alt = 'Failed to load image'; }}
-                   />
+                 {documentLoading ? (
+                   <div className="flex flex-col items-center gap-3 text-gray-500">
+                     <div className="w-10 h-10 border-4 border-brand-200 border-t-brand-500 rounded-full animate-spin" />
+                     <p>Loading document...</p>
+                   </div>
+                 ) : documentError ? (
+                   <div className="text-red-500 flex flex-col items-center text-center">
+                     <AlertCircle size={48} className="mb-2 opacity-70" />
+                     <p>{documentError}</p>
+                   </div>
+                 ) : documentUrl ? (
+                   documentMimeType.startsWith('image/') ? (
+                     <img
+                       src={documentUrl}
+                       alt={actionType === 'view_receipt' ? 'Payment Receipt' : 'Medical Certificate'}
+                       className="max-w-full max-h-[70vh] object-contain rounded-lg border border-gray-200 shadow-sm"
+                     />
+                   ) : (
+                     <iframe
+                       src={documentUrl}
+                       title={actionType === 'view_receipt' ? 'Payment Receipt' : 'Medical Certificate'}
+                       className="h-[70vh] w-full rounded-lg border border-gray-200 bg-white"
+                     />
+                   )
                  ) : (
                    <div className="text-gray-400 flex flex-col items-center">
                      <ImageIcon size={48} className="mb-2 opacity-30" />
-                     <p>No receipt image available</p>
+                     <p>No document available</p>
                    </div>
                  )}
                </div>
