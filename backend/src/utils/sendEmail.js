@@ -17,18 +17,7 @@ const sendEmail = async (options) => {
         ...(options.html && { html: options.html })
     };
 
-    try {
-        await transporter.sendMail(mailOptions);
-        console.log(`Email successfully sent to ${options.email}`);
-    } catch (error) {
-        console.error('Failed to send email via SMTP. Falling back to console log.');
-        console.error('--- Email Content Drop ---');
-        console.error(`To: ${options.email}`);
-        console.error(`Subject: ${options.subject}`);
-        console.error(`Text: ${options.message}`);
-        console.error('--------------------------');
-        // Do not throw the error, allow the process (like signup) to continue so the OTP can be used from the console
-    }
+    await transporter.sendMail(mailOptions);
 };
 
 export default sendEmail;
