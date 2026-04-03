@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { IITK_DEPARTMENT_OPTIONS } from '../constants/departments';
 import {
   User, Mail, Lock, Shield, Eye, EyeOff, Save, CheckCircle2,
   AlertTriangle, Dumbbell, Waves, Calendar, BadgeCheck, Info,
@@ -62,6 +63,7 @@ const SettingsPage = () => {
   const [showNew, setShowNew] = useState(false);
   const [pwMsg, setPwMsg] = useState({ type: '', text: '' });
   const [savingPw, setSavingPw] = useState(false);
+  const requiresCanonicalDepartment = authUser?.roles?.some((role) => ['student', 'faculty'].includes(role));
 
   /* ── Fetch ──────────────────────────────────────────────────────── */
   const fetchData = useCallback(async () => {
@@ -88,10 +90,19 @@ const SettingsPage = () => {
     e.preventDefault();
     setProfileMsg({ type: '', text: '' });
     if (!name.trim()) { setProfileMsg({ type: 'error', text: 'Name cannot be empty.' }); return; }
+    if (requiresCanonicalDepartment && !department.trim()) {
+      setProfileMsg({ type: 'error', text: 'Please select a valid IITK department.' });
+      return;
+    }
 
     setSavingProfile(true);
     try {
-      await api.patch('/settings/profile', { name: name.trim(), program: program.trim(), department: department.trim(), designation: designation.trim() });
+      await api.patch('/settings/profile', {
+        name: name.trim(),
+        program: program.trim(),
+        department: department.trim().toUpperCase(),
+        designation: designation.trim()
+      });
       setProfileMsg({ type: 'success', text: 'Profile updated successfully!' });
       setTimeout(() => setProfileMsg({ type: '', text: '' }), 3000);
     } catch (err) {
@@ -112,9 +123,12 @@ const SettingsPage = () => {
     setSavingPw(true);
     try {
       await api.patch('/settings/password', { currentPassword, newPassword, confirmPassword });
-      setPwMsg({ type: 'success', text: 'Password changed successfully!' });
+      setPwMsg({ type: 'success', text: 'Password changed successfully. Please sign in again.' });
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
-      setTimeout(() => setPwMsg({ type: '', text: '' }), 3000);
+      setTimeout(() => {
+        setPwMsg({ type: '', text: '' });
+        logout();
+      }, 1200);
     } catch (err) {
       setPwMsg({ type: 'error', text: err.response?.data?.error?.message || err.response?.data?.message || 'Failed to change password.' });
     } finally {
@@ -182,7 +196,28 @@ const SettingsPage = () => {
                 {authUser?.roles?.includes('faculty') && (
                   <Field label="Designation" icon={Briefcase} value={designation} onChange={e => setDesignation(e.target.value)} placeholder="e.g. Professor, Assistant Professor" />
                 )}
-                <Field label="Department" icon={Building2} value={department} onChange={e => setDepartment(e.target.value)} placeholder="e.g. CSE, EE, ME" />
+                {requiresCanonicalDepartment ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Department</label>
+                    <div className="relative">
+                      <Building2 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <select
+                        value={department || ''}
+                        onChange={(e) => setDepartment(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-400 transition-all text-gray-800"
+                      >
+                        <option value="">Select IITK department</option>
+                        {IITK_DEPARTMENT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <Field label="Department" icon={Building2} value={department} onChange={e => setDepartment(e.target.value)} placeholder="Department" />
+                )}
               </div>
               <div className="flex justify-end pt-2">
                 <button type="submit" disabled={savingProfile}

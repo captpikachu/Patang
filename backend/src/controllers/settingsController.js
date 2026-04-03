@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import SubscriptionV2 from '../models/SubscriptionV2.js';
 import Penalty from '../models/Penalty.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
+import { isValidIitkDepartment } from '../constants/departments.js';
 
 /**
  * GET /api/settings
@@ -109,7 +110,21 @@ export const updateProfile = async (req, res) => {
 
         if (!user.profileDetails) user.profileDetails = {};
         if (program !== undefined) user.profileDetails.program = program?.trim() || null;
-        if (department !== undefined) user.profileDetails.department = department?.trim() || null;
+        if (department !== undefined) {
+            const normalizedDepartment = department?.trim().toUpperCase() || null;
+            const mustUseCanonicalDepartment = user.roles?.some((role) => ['student', 'faculty'].includes(role));
+
+            if (mustUseCanonicalDepartment && !isValidIitkDepartment(normalizedDepartment)) {
+                return errorResponse(
+                    res,
+                    400,
+                    'VALIDATION_ERROR',
+                    'Select a valid IITK department from the allowed list'
+                );
+            }
+
+            user.profileDetails.department = normalizedDepartment;
+        }
         if (designation !== undefined) user.profileDetails.designation = designation?.trim() || null;
 
         if (!user.name) {
