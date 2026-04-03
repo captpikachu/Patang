@@ -72,11 +72,27 @@ app.use('/api/captain', captainRoutes);
 app.use('/api/executive/captain', captainAdminRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// Start cron jobs
 groupExpiryJob.start();
 noShowJob.start();
 subscriptionExpiryJob.start();
 slotGenerationJob.start();
 
+const frontendDistPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+app.use(express.static(frontendDistPath));
+
+// Catch-all route to serve the index.html for React Router
+app.get('*all', (req, res) => {
+    // Skip API routes
+    if (req.url.startsWith('/api')) {
+        return res.status(404).json({ message: 'API route not found' });
+    }
+    const indexPath = path.join(frontendDistPath, 'index.html');
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            // If the file doesn't exist, we're likely in dev mode or haven't built yet
+            res.status(200).send('Backend is running. Build frontend to see the UI.');
+        }
+    });
+});
 
 export default app;
