@@ -27,6 +27,28 @@ const getTodayValue = () => {
   return `${year}-${month}-${day}`;
 };
 
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const h24 = Math.floor(i / 2);
+  const h12 = h24 % 12 || 12;
+  const m = i % 2 === 0 ? '00' : '30';
+  const ampm = h24 < 12 ? 'AM' : 'PM';
+  return {
+    value24: `${h24.toString().padStart(2, '0')}:${m}`,
+    label: `${h12.toString().padStart(2, '0')}:${m} ${ampm}`
+  };
+});
+
+const parseManualTime = (input) => {
+  const match = input.trim().match(/^(\d{1,2}):?(\d{2})?\s*(am|pm)?$/i);
+  if (!match) return input;
+  let h = parseInt(match[1], 10);
+  let m = match[2] || '00';
+  const ampm = match[3] ? match[3].toLowerCase() : null;
+  if (ampm === 'pm' && h < 12) h += 12;
+  if (ampm === 'am' && h === 12) h = 0;
+  return `${h.toString().padStart(2, '0')}:${m}`;
+};
+
 const StatusBadge = ({ status }) => {
   const colors = {
     pending: 'bg-amber-50 text-amber-600 border-amber-200',
@@ -66,6 +88,51 @@ const FormattedDateInput = ({ value, onChange, min }) => {
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         onChange={(e) => onChange(e.target.value)}
       />
+    </div>
+  );
+};
+
+const TimeCombobox = ({ value, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [displayVal, setDisplayVal] = useState('');
+
+  useEffect(() => {
+    const match = TIME_OPTIONS.find(o => o.value24 === value);
+    setDisplayVal(match ? match.label : value);
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={displayVal}
+        onChange={(e) => {
+          setDisplayVal(e.target.value);
+          onChange(parseManualTime(e.target.value));
+        }}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+        className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+        placeholder="e.g. 06:30 PM"
+      />
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-100 shadow-xl rounded-xl max-h-56 overflow-y-auto">
+          {TIME_OPTIONS.map((opt) => (
+            <div
+              key={opt.value24}
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-brand-50 hover:text-brand-600 cursor-pointer transition-colors"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setDisplayVal(opt.label);
+                onChange(opt.value24);
+                setIsOpen(false);
+              }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -201,7 +268,6 @@ const CaptainDashboardPage = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
       {/* LEFT COLUMN: Practice Blocks */}
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -347,22 +413,16 @@ const CaptainDashboardPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Start Time</label>
-                  <input 
-                    type="time" 
-                    required
-                    className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 outline-none"
+                  <TimeCombobox 
                     value={formData.startTime}
-                    onChange={(e) => setFormData({...formData, startTime: e.target.value})}
+                    onChange={(val) => setFormData({...formData, startTime: val})}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">End Time</label>
-                  <input 
-                    type="time" 
-                    required
-                    className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 outline-none"
+                  <TimeCombobox 
                     value={formData.endTime}
-                    onChange={(e) => setFormData({...formData, endTime: e.target.value})}
+                    onChange={(val) => setFormData({...formData, endTime: val})}
                   />
                 </div>
               </div>
@@ -412,22 +472,16 @@ const CaptainDashboardPage = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">Start Time</label>
-                  <input 
-                    type="time" 
-                    required
-                    className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 outline-none"
+                  <TimeCombobox 
                     value={editData.startTime}
-                    onChange={(e) => setEditData({...editData, startTime: e.target.value})}
+                    onChange={(val) => setEditData({...editData, startTime: val})}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5">End Time</label>
-                  <input 
-                    type="time" 
-                    required
-                    className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 outline-none"
+                  <TimeCombobox 
                     value={editData.endTime}
-                    onChange={(e) => setEditData({...editData, endTime: e.target.value})}
+                    onChange={(val) => setEditData({...editData, endTime: val})}
                   />
                 </div>
               </div>
