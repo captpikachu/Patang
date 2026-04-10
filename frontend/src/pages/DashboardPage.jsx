@@ -91,6 +91,13 @@ const DashboardPage = () => {
   const [cancelError, setCancelError] = useState('');
   const [cancelLoading, setCancelLoading] = useState(false);
 
+  // Modify Modal State
+  const [showModifyModal, setShowModifyModal] = useState(false);
+  const [bookingToModify, setBookingToModify] = useState(null);
+  const [modifyCount, setModifyCount] = useState('');
+  const [modifyError, setModifyError] = useState('');
+  const [modifyLoading, setModifyLoading] = useState(false);
+
   const fetchDashboard = async ({ preserveLoading = false } = {}) => {
     if (!preserveLoading) {
       setLoading(true);
@@ -180,31 +187,37 @@ const DashboardPage = () => {
     }
   };
 
-  const handleModifyBooking = async (booking) => {
-    const defaultCount = String(booking.participantCount || 1);
-    const nextCount = window.prompt('Update the number of players attending:', defaultCount);
-    if (nextCount == null) return;
+  const handleModifyBooking = (booking) => {
+    setBookingToModify(booking);
+    setModifyCount(String(booking.participantCount || 1));
+    setModifyError('');
+    setShowModifyModal(true);
+  };
 
-    const participantCount = Number.parseInt(nextCount, 10);
+  const confirmModifyBooking = async () => {
+    const participantCount = Number.parseInt(modifyCount, 10);
     if (!Number.isFinite(participantCount) || participantCount < 1) {
-      window.alert('Please enter a valid number of players.');
+      setModifyError('Please enter a valid number of players (at least 1).');
       return;
     }
 
-    setBookingUpdateId(booking._id);
+    setModifyLoading(true);
+    setModifyError('');
     setBookingFeedback({ tone: '', message: '' });
 
     try {
-      await api.patch(`/bookings/${booking._id}`, { participantCount });
+      await api.patch(`/bookings/${bookingToModify._id}`, { participantCount });
       await fetchDashboard({ preserveLoading: true });
+      setShowModifyModal(false);
+      setBookingToModify(null);
       setBookingFeedback({
         tone: 'success',
-        message: `${booking.facilityName || 'Your booking'} was updated to ${participantCount} player${participantCount > 1 ? 's' : ''}.`,
+        message: `${bookingToModify.facilityName || 'Your booking'} was updated to ${participantCount} player${participantCount > 1 ? 's' : ''}.`,
       });
     } catch (err) {
-      window.alert(err.response?.data?.message || 'Could not update the booking.');
+      setModifyError(err.response?.data?.message || 'Could not update the booking.');
     } finally {
-      setBookingUpdateId('');
+      setModifyLoading(false);
     }
   };
 
@@ -545,6 +558,28 @@ const DashboardPage = () => {
       }}
       loading={cancelLoading}
       error={cancelError}
+    />
+
+    <ConfirmModal
+      isOpen={showModifyModal}
+      onClose={() => { if (!modifyLoading) { setShowModifyModal(false); setBookingToModify(null); } }}
+      onConfirm={confirmModifyBooking}
+      title="Modify Booking"
+      description={`Update the number of players for your booking at ${bookingToModify?.facilityName || 'this facility'}.`}
+      variant="success"
+      confirmLabel="Save Changes"
+      cancelLabel="Cancel"
+      inputProps={{
+        label: 'Number of Players (including you)',
+        type: 'number',
+        min: 1,
+        value: modifyCount,
+        onChange: (e) => setModifyCount(e.target.value),
+        placeholder: 'E.g., 2',
+        required: true
+      }}
+      loading={modifyLoading}
+      error={modifyError}
     />
     </>
   );
