@@ -163,7 +163,6 @@ describe('DashboardPage', () => {
 
   it('updates the player count through the modify booking action', async () => {
     const user = userEvent.setup();
-    const promptMock = vi.spyOn(window, 'prompt').mockReturnValue('4');
 
     getMock
       .mockResolvedValueOnce({
@@ -212,10 +211,14 @@ describe('DashboardPage', () => {
 
     await user.click(await screen.findByRole('button', { name: /modify/i }));
 
+    const countInput = await screen.findByRole('spinbutton', { name: /number of players/i });
+    await user.clear(countInput);
+    await user.type(countInput, '4');
+
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
     expect(patchMock).toHaveBeenCalledWith('/bookings/booking-1', { participantCount: 4 });
     expect(await screen.findByText(/was updated to 4 players/i)).toBeInTheDocument();
-
-    promptMock.mockRestore();
   });
 
   it('opens an enlarged QR preview for an approved subscription', async () => {
