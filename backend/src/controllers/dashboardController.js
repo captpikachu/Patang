@@ -54,6 +54,7 @@ export const getDashboard = async (req, res) => {
             SportsBooking.find({
                 user: userId,
                 bookingDate: { $gte: startOfToday },
+                slotEndAt: { $gte: now },
                 status: { $in: ['confirmed', 'group_pending'] }
             })
                 .populate('facility', 'name location sportType facilityType capacity')
